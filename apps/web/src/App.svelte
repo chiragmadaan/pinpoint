@@ -11,6 +11,7 @@
     levelForXp,
     recordCompletedDay,
     trophiesEarned,
+    trophiesUnlockedBetween,
     selectCountry,
     sessionVerdicts,
     sessionXp,
@@ -23,6 +24,7 @@
     type DailyPuzzle,
     type PlayerState,
     type Session,
+    type Trophy,
     type Verdict,
   } from "@pinpoint/core";
   import { createWorldMap, type MapFeature, type WorldMap } from "@pinpoint/map";
@@ -57,10 +59,21 @@
   let shareText = "";
   let copied = false;
 
-  // Per-question countdown timer.
+  // Per-question countdown timer (rendered as a depleting ring, not a reverse bar).
   let timeLeft = 0;
   let totalTime = 0;
   let timerId: ReturnType<typeof setInterval> | null = null;
+  const RING_R = 26;
+  const RING_C = 2 * Math.PI * RING_R;
+
+  // Trophy-unlock toast.
+  let trophyToast: Trophy | null = null;
+  let trophyToastId: ReturnType<typeof setTimeout> | null = null;
+  function showTrophy(t: Trophy) {
+    trophyToast = t;
+    if (trophyToastId) clearTimeout(trophyToastId);
+    trophyToastId = setTimeout(() => (trophyToast = null), 4000);
+  }
 
   function stopTimer() {
     if (timerId) clearInterval(timerId);
@@ -138,6 +151,8 @@
           barNoTransition = true; // jump back to empty WITHOUT animating backwards
           displayPct = 0;
           displayLevel += 1;
+          const unlocked = trophiesUnlockedBetween(displayLevel - 1, displayLevel);
+          if (unlocked.length) showTrophy(unlocked[0]!); // celebrate at the moment of level-up
           await tick();
           await wait(30);
           barNoTransition = false;
@@ -153,6 +168,7 @@
   $: revealed = session?.phase === "revealed";
   $: lastResult = revealed ? (session!.results.at(-1) ?? null) : null;
   $: answerName = lastResult ? (names[lastResult.correctIso] ?? lastResult.correctIso) : "";
+  $: guessName = lastResult?.guessIso ? (names[lastResult.guessIso] ?? lastResult.guessIso) : "";
   // Live XP = banked XP + XP earned so far today; drives the bar/level and fills as you answer.
   $: liveXp = player.xp + (session ? sessionXp(session) : 0);
   $: lvl = levelForXp(liveXp);
@@ -273,6 +289,12 @@
 </script>
 
 <main>
+  {#if trophyToast}
+    <div class="toast" role="status">
+      <span class="toast-emoji">{trophyToast.emoji}</span>
+      <span>Trophy unlocked — <strong>{trophyToast.name}</strong>!</span>
+    </div>
+  {/if}
   <header>
     <h1>📍 Pinpoint {#if DEV}<span class="dev-badge">DEV</span>{/if}</h1>
     <div class="stats">
@@ -329,9 +351,18 @@
     </section>
   {:else if q}
     {#if !revealed}
-      <div class="timer" class:low={timeLeft <= 5} title="Time left">
-        <div class="timer-fill" style="width: {totalTime ? (timeLeft / totalTime) * 100 : 0}%"></div>
-        <span class="timer-num">{timeLeft}s</span>
+      <div class="timer-wrap">
+        <svg class="timer-ring" class:low={timeLeft <= 5} viewBox="0 0 60 60" width="60" height="60" aria-label="Time left">
+          <circle class="track" cx="30" cy="30" r={RING_R} />
+          <circle
+            class="prog"
+            cx="30"
+            cy="30"
+            r={RING_R}
+            style="stroke-dasharray: {RING_C}; stroke-dashoffset: {RING_C * (1 - (totalTime ? timeLeft / totalTime : 0))}; transition: stroke-dashoffset 1s linear;"
+          />
+          <text x="30" y="31" text-anchor="middle" dominant-baseline="middle">{timeLeft}</text>
+        </svg>
       </div>
     {/if}
     <p class="clue">{q.prompt}</p>
@@ -361,9 +392,9 @@
         {#if lastResult.verdict === "correct"}
           {EMOJI.correct} Correct! It's {answerName}.
         {:else if lastResult.verdict === "neighbor"}
-          {EMOJI.neighbor} Close — a neighbor! The answer was {answerName}.
+          {EMOJI.neighbor} Close — a neighbor! The answer was {answerName}. You picked {guessName}.
         {:else}
-          {EMOJI.wrong} Not quite — the answer was {answerName}.
+          {EMOJI.wrong} Not quite — the answer was {answerName}. {#if lastResult.guessIso}You picked {guessName}.{/if}
         {/if}
       </p>
       <button on:click={onNext}>{session && session.index < 2 ? "Next" : "See results"}</button>
@@ -419,10 +450,19 @@
   .progress { opacity: 0.7; margin: 0 0 0.6rem; }
   canvas { width: 100%; height: auto; border-radius: 10px; touch-action: none; display: block; }
   .hint { opacity: 0.55; font-size: 0.85rem; margin: 0.4rem 0 0; text-align: center; }
-  .timer { position: relative; height: 22px; background: #12293d; border-radius: 999px; overflow: hidden; margin-bottom: 0.6rem; }
-  .timer-fill { height: 100%; background: #3ea672; border-radius: 999px; transition: width 1s linear; }
-  .timer.low .timer-fill { background: #d1495b; }
-  .timer-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 600; }
+  .timer-wrap { display: flex; justify-content: center; margin-bottom: 0.4rem; }
+  .timer-ring { transform: rotate(-90deg); } /* start depleting from 12 o'clock */
+  .timer-ring .track { fill: none; stroke: #12293d; stroke-width: 6; }
+  .timer-ring .prog { fill: none; stroke: #3ea672; stroke-width: 6; stroke-linecap: round; }
+  .timer-ring text { fill: #eaf2f8; font-size: 20px; font-weight: 700; transform: rotate(90deg); transform-origin: 30px 30px; }
+  .timer-ring.low .prog { stroke: #d1495b; }
+  .timer-ring.low text { fill: #d1495b; }
+  .toast { position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 100;
+    display: flex; align-items: center; gap: 0.5rem; background: #12293d; border: 1px solid #f2c14e;
+    color: #eaf2f8; padding: 0.6rem 1rem; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    animation: toast-in 0.35s ease; }
+  .toast-emoji { font-size: 1.5rem; }
+  @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -12px); } to { opacity: 1; transform: translate(-50%, 0); } }
   .welcome { text-align: center; padding: 2rem 1rem; }
   .welcome h2 { font-size: 1.6rem; margin: 0; }
   .welcome-sub { opacity: 0.8; margin: 0.5rem 0 0; }

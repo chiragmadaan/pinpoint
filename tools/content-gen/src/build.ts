@@ -223,6 +223,9 @@ export function assignDifficulty(cands: Candidate[], obscurity: Record<string, n
     // A truly HARD question needs two failure points: derive the country from the clue AND locate it.
     // "Locate X" only tests location (one failure point), so it can never be hard — cap at medium.
     if (s.c.clueType === "locate" && difficulty === "hard") difficulty = "medium";
+    // Birthplace is inherently ≥2 failure points (know the person AND derive their birth country,
+    // which is often a gotcha), so it can never be "easy" — floor at medium.
+    if (s.c.clueType === "birthplace" && difficulty === "easy") difficulty = "medium";
     const { hardness: _drop, ...rest } = s.c;
     return { ...rest, difficulty };
   });

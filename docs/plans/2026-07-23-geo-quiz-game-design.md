@@ -99,7 +99,16 @@ Nearly every clue type maps to structured, verifiable facts in **Wikidata**, so 
 
 **Anti-leak filter (`leaksCountryName`):** drop any clue whose text contains the answer country's name or a demonym prefix — kills "United Arab Emirates dirham", "Estonian → Estonia", "Kinyarwanda → Rwanda", "Kuwait City → Kuwait", etc. Currency is reduced to its **unit** ("dirham", "naira") so it neither leaks nor collides. (`locate` is exempt — naming the country is its whole point.)
 
-**Current output:** ~2,678 questions (incl. 1,322 birthplaces) → **400-day** calendar (capacity cap). Regenerate with `pnpm content:gen`.
+**Difficulty model (important):**
+- **Absolute, not relative** — difficulty = global tercile of a hardness score (country/entity obscurity + clue-type weight). "Easy" means genuinely easy for a casual player, so inherently-hard clue types (highest-point, TLD, currency, calling-code) never land in easy.
+- **A hard question needs two failure points** (derive the country from the clue AND locate it). Therefore: **`locate` can never be hard** (one failure point → capped at medium), and **`birthplace` can never be easy** (know the person AND derive their birth country, often a gotcha → floored at medium).
+- **Fame signal = Wikipedia sitelink count** with a ≥150 floor for people. Known limitation: sitelinks measure *encyclopedic notability*, not *public fame* (e.g. Boris Yeltsin passes but isn't a household name). Genuine fix would be **pageviews** (deferred). People therefore only appear in medium/hard, where lesser-known-but-notable figures are acceptable.
+
+**Timer:** per-question countdown by difficulty — **easy 15s · medium 20s · hard 30s** (`TIMER_SECONDS`). On zero it auto-submits the selection or records a miss. Purpose today is pacing/tension; anti-cheat value is minor until competitive leaderboards exist.
+
+**Welcome screen:** the app opens on a Play screen (not straight into Q1); customizable later for logo/splash.
+
+**Current output:** ~1,715 candidate questions (incl. 359 world-famous birthplaces after the ≥150-sitelink floor) → **213-day** calendar. Fewer days than the raw pool allows because genuinely-*easy* questions are scarce (only locate/flag/capital/famous-landmark/dish can be easy) — quality over filler. Regenerate with `pnpm content:gen`.
 
 ### Flags = emoji (not images)
 Flag questions render the country's **flag emoji** (🇫🇷), derived from its alpha-2 code — no image assets or licensing. The clue emoji is rendered **unselectable** (no copy/drag/right-click) because the emoji's characters encode the alpha-2 code and would otherwise leak the answer. **Caveat:** Windows Chrome renders flag emoji as the 2-letter code rather than a flag — fine for the mobile-first audience, but swap to SVGs if desktop-web becomes important.
