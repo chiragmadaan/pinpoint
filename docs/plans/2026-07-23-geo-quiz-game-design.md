@@ -88,7 +88,18 @@ Nearly every clue type maps to structured, verifiable facts in **Wikidata**, so 
 4. **Curated trivia** (`data/trivia.curated.json`) is merged in with **author-set difficulty** — this is how *fact-obscurity* questions (e.g. "Where was the Boer War fought?" → ZAF) get graded, since fact obscurity can't be auto-derived.
 5. **Schedule** into a no-repeat daily calendar (`assembleCalendar`): 1 easy + 1 medium + 1 hard/day, **every question used at most once**, no country repeated within a 45-day window, 3 distinct countries per day. Stops when a tier runs dry (never silently repeats).
 
-**Current output:** ~772 questions → **256 unique days**. Regenerate with `pnpm content:gen`.
+**Auto clue types (Wikidata):**
+- *Country-attribute* (one per country): locate, flag (emoji), capital (P36), currency *unit* (P38), official language (P37), calling code (P474), internet TLD (P78, ASCII ccTLDs only), highest point (P610).
+- *Entity → country* (scale to thousands, fame-ranked difficulty): **birthplace** of world-famous people (P19→P17, filtered to ≥80 Wikipedia language editions, fetched per-country to dodge the WDQS timeout), **landmark** (UNESCO World Heritage Sites, P31 Q9259), **dish** (P495 country of origin).
+- Plus curated trivia/nickname/landmark/dish/superlative.
+
+**Excluded on purpose:** `deathplace` (morbid) and anything matching a **sensitivity blocklist** (genocide, massacre, disaster, atrocity, terror, assassination, famine, apartheid, slavery, …) — kept out to preserve a light tone. `war` is allowed (historical, educational).
+
+**Pipeline robustness:** the SPARQL cache is keyed by **query text** (editing a query auto-refreshes it), and fetches use **retry + linear back-off** at gentle concurrency (WDQS 429-rate-limits bursts). No hard timer on questions (casual-daily feel; speed is reserved for a future PvP mode).
+
+**Anti-leak filter (`leaksCountryName`):** drop any clue whose text contains the answer country's name or a demonym prefix — kills "United Arab Emirates dirham", "Estonian → Estonia", "Kinyarwanda → Rwanda", "Kuwait City → Kuwait", etc. Currency is reduced to its **unit** ("dirham", "naira") so it neither leaks nor collides. (`locate` is exempt — naming the country is its whole point.)
+
+**Current output:** ~2,678 questions (incl. 1,322 birthplaces) → **400-day** calendar (capacity cap). Regenerate with `pnpm content:gen`.
 
 ### Flags = emoji (not images)
 Flag questions render the country's **flag emoji** (🇫🇷), derived from its alpha-2 code — no image assets or licensing. The clue emoji is rendered **unselectable** (no copy/drag/right-click) because the emoji's characters encode the alpha-2 code and would otherwise leak the answer. **Caveat:** Windows Chrome renders flag emoji as the 2-letter code rather than a flag — fine for the mobile-first audience, but swap to SVGs if desktop-web becomes important.

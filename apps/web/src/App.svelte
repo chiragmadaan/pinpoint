@@ -234,7 +234,7 @@
 
 <main>
   <header>
-    <h1>📍 Pinpoint</h1>
+    <h1>📍 Pinpoint {#if DEV}<span class="dev-badge">DEV</span>{/if}</h1>
     <div class="stats">
       🔥 {player.streak}
       {#if DEV}
@@ -330,6 +330,8 @@
   .share { user-select: text; -webkit-user-select: text; }
   header { display: flex; justify-content: space-between; align-items: baseline; }
   h1 { font-size: 1.4rem; margin: 0.2rem 0; }
+  .dev-badge { font-size: 0.7rem; font-weight: 700; vertical-align: middle; padding: 0.1rem 0.4rem;
+    margin-left: 0.3rem; border-radius: 5px; background: #d1495b; color: #fff; letter-spacing: 0.05em; }
   .stats { opacity: 0.85; display: flex; align-items: center; gap: 0.6rem; }
   .dev-toggle { width: auto; margin: 0; padding: 0.25rem 0.6rem; font-size: 0.8rem; font-weight: 500;
     background: #33506b; color: #fff; border-radius: 6px; }

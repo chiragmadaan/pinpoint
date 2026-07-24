@@ -16,10 +16,49 @@ export interface ValueRow {
   value: string;
 }
 
-/** A question before difficulty is assigned. */
-export type Candidate = Omit<Question, "difficulty">;
+/** A question before difficulty is assigned. `hardness` (0=easy..1=hard) overrides the default
+ * obscurity+clue-weight scoring when set — used by fame-ranked person questions. */
+export type Candidate = Omit<Question, "difficulty"> & { hardness?: number };
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+// Keep the daily light: drop any question whose text evokes tragedy/atrocity. Applied to every
+// question (auto + curated). "war" is intentionally NOT here — historical wars are fair game;
+// atrocities are the line.
+export const SENSITIVE_TERMS = [
+  "genocide", "massacre", "holocaust", "atrocity", "ethnic cleansing", "war crime", "terrorist",
+  "terror attack", "assassinat", "slaughter", "famine", "disaster", "catastrophe",
+  "nuclear accident", "bombing", "apartheid", "slavery", "execution",
+];
+
+export function isSensitiveText(text: string): boolean {
+  const t = text.toLowerCase();
+  return SENSITIVE_TERMS.some((w) => t.includes(w));
+}
+
+function commonPrefixLen(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+
+/**
+ * Does a clue value leak the answer via the country's name/demonym? True if any word of the value
+ * matches a name word, or shares a >=4-char prefix (catches "Estonian"~"Estonia",
+ * "United Arab Emirates dirham"~UAE, "Kuwait City"~Kuwait).
+ */
+export function leaksCountryName(value: string, countryName: string): boolean {
+  const valLower = value.toLowerCase();
+  const nameWords = countryName.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 4);
+  const valWords = valLower.split(/[^a-z0-9]+/).filter(Boolean);
+  for (const nw of nameWords) {
+    if (valLower.includes(nw)) return true; // substring anywhere (e.g. "Kinyarwanda" contains "rwanda")
+    for (const vw of valWords) {
+      if (commonPrefixLen(vw, nw) >= 4) return true; // demonym prefix (e.g. "Estonian" ~ "Estonia")
+    }
+  }
+  return false;
+}
 
 /** Flag emoji from an ISO 3166-1 alpha-2 code, e.g. "FR" -> 🇫🇷. */
 export function flagEmoji(alpha2: string | undefined): string | undefined {
@@ -76,6 +115,7 @@ export function buildUniqueValue(
   allowedIso: Set<string>,
   clueType: ClueType,
   prompt: (value: string) => string,
+  nameOf?: (iso: string) => string,
 ): Candidate[] {
   const byValue = new Map<string, Set<string>>();
   for (const r of rows) {
@@ -88,6 +128,7 @@ export function buildUniqueValue(
   for (const [value, isos] of byValue) {
     if (isos.size !== 1) continue; // shared value -> ambiguous -> drop
     const iso = [...isos][0]!;
+    if (nameOf && leaksCountryName(value, nameOf(iso))) continue; // clue reveals the answer -> drop
     out.push({
       id: `${clueType}-${slug(value)}-${iso}`,
       clueType,
@@ -104,23 +145,85 @@ const CLUE_WEIGHT: Record<string, number> = {
   locate: 0,
   flag: 0.15,
   capital: 0.3,
+  tld: 0.35,
+  "calling-code": 0.45,
   currency: 0.45,
   language: 0.45,
+  "highest-point": 0.55,
 };
 
-/** Assign easy/medium/hard by combining country obscurity with clue difficulty, split into terciles. */
+/**
+ * Person questions: "In which country was/did <person> born/die?". Difficulty comes from the
+ * person's fame (Wikipedia sitelink count) — a household name is easy, an obscure figure is hard.
+ */
+export interface PersonEntry {
+  iso: string;
+  person: string;
+  sitelinks: number;
+}
+
+export function buildPeopleQuestions(
+  entries: PersonEntry[],
+  clueType: ClueType,
+  prompt: (person: string) => string,
+  nameOf?: (iso: string) => string,
+): Candidate[] {
+  // Reject a name shared by people from different countries (ambiguous answer).
+  const isosByName = new Map<string, Set<string>>();
+  const best = new Map<string, PersonEntry>(); // keep the most-famous entry per name
+  for (const e of entries) {
+    let set = isosByName.get(e.person);
+    if (!set) isosByName.set(e.person, (set = new Set()));
+    set.add(e.iso);
+    const b = best.get(e.person);
+    if (!b || e.sitelinks > b.sitelinks) best.set(e.person, e);
+  }
+
+  const out: Candidate[] = [];
+  for (const [person, isos] of isosByName) {
+    if (isos.size !== 1) continue; // same name, different countries -> drop
+    if (/^Q\d+$/.test(person)) continue; // no English label available
+    const e = best.get(person)!;
+    if (nameOf && leaksCountryName(person, nameOf(e.iso))) continue;
+    const fame = Math.min(1, e.sitelinks / 150); // ~150 language editions = globally iconic
+    out.push({
+      id: `${clueType}-${slug(person)}-${e.iso}`,
+      clueType,
+      prompt: prompt(person),
+      answerIso: e.iso,
+      acceptedIso: [e.iso],
+      source: `wikidata:${clueType}`,
+      hardness: Math.max(0.1, 1 - fame * 0.85), // famous -> easy, obscure -> hard
+    });
+  }
+  return out;
+}
+
+/**
+ * Assign easy/medium/hard PER CLUE TYPE (each type gets its own tercile split), so every difficulty
+ * tier contains a mix of types — otherwise one type (e.g. birthplace) floods a tier and the daily
+ * puzzle feels same-y. Within a type, hardness = fame override, else country obscurity + clue weight.
+ */
 export function assignDifficulty(cands: Candidate[], obscurity: Record<string, number>): Question[] {
-  const scored = cands.map((c) => ({
-    c,
-    h: (obscurity[c.answerIso] ?? 0.5) * 0.85 + (CLUE_WEIGHT[c.clueType] ?? 0.4),
-  }));
-  scored.sort((a, b) => a.h - b.h);
-  const n = scored.length;
-  const t = Math.floor(n / 3);
-  return scored.map((s, i) => {
-    const difficulty: Difficulty = i < t ? "easy" : i < 2 * t ? "medium" : "hard";
-    return { ...s.c, difficulty };
-  });
+  const byType = new Map<string, { c: Candidate; h: number }[]>();
+  for (const c of cands) {
+    const h = c.hardness ?? (obscurity[c.answerIso] ?? 0.5) * 0.85 + (CLUE_WEIGHT[c.clueType] ?? 0.4);
+    let arr = byType.get(c.clueType);
+    if (!arr) byType.set(c.clueType, (arr = []));
+    arr.push({ c, h });
+  }
+  const out: Question[] = [];
+  for (const arr of byType.values()) {
+    arr.sort((a, b) => a.h - b.h);
+    const n = arr.length;
+    const t = Math.floor(n / 3);
+    arr.forEach((s, i) => {
+      const difficulty: Difficulty = n < 3 ? "medium" : i < t ? "easy" : i < 2 * t ? "medium" : "hard";
+      const { hardness: _drop, ...rest } = s.c;
+      out.push({ ...rest, difficulty });
+    });
+  }
+  return out;
 }
 
 // --- deterministic shuffle so re-running produces a stable calendar (nice diffs) ---
@@ -158,6 +261,7 @@ export function assembleCalendar(
   startDateKey: string,
   maxDays = 400,
   windowDays = 45,
+  typeCap = 0.28, // no clue type may exceed this share of all questions (prevents birthplace flooding)
 ): PuzzleCalendar {
   const byDiff: Record<Difficulty, Question[]> = { easy: [], medium: [], hard: [] };
   for (const q of pool) byDiff[q.difficulty].push(q);
@@ -165,25 +269,40 @@ export function assembleCalendar(
   for (const d of ["easy", "medium", "hard"] as const) shuffle(byDiff[d], rng);
 
   const usedQ = new Set<string>();
-  const recent: { iso: string; day: number }[] = [];
+  const recent: { iso: string; day: number }[] = []; // country recency
+  const typeCount: Record<string, number> = {};
+  const maxPerType = Math.ceil(maxDays * 3 * typeCap);
   const isRecent = (iso: string, day: number) => recent.some((r) => r.iso === iso && day - r.day < windowDays);
-  const pick = (arr: Question[], banToday: Set<string>, day: number): Question | null => {
-    for (const q of arr) if (!usedQ.has(q.id) && !banToday.has(q.answerIso) && !isRecent(q.answerIso, day)) return q;
-    for (const q of arr) if (!usedQ.has(q.id) && !banToday.has(q.answerIso)) return q; // relax window
-    return null;
+
+  // Progressive relaxation: distinct type today + under the type cap + fresh country, then drop
+  // constraints one at a time so a slot is never left empty. Shuffle (not a window) supplies order,
+  // so there's no periodic pattern.
+  const pick = (arr: Question[], banIso: Set<string>, banType: Set<string>, day: number): Question | null => {
+    const ok = (q: Question) => !usedQ.has(q.id) && !banIso.has(q.answerIso);
+    const underCap = (q: Question) => (typeCount[q.clueType] ?? 0) < maxPerType;
+    return (
+      arr.find((q) => ok(q) && !banType.has(q.clueType) && underCap(q) && !isRecent(q.answerIso, day)) ??
+      arr.find((q) => ok(q) && !banType.has(q.clueType) && underCap(q)) ??
+      arr.find((q) => ok(q) && !banType.has(q.clueType)) ?? // distinct type today, drop cap + window
+      arr.find((q) => ok(q)) ?? // last resort: any unused, new country today
+      null
+    );
   };
 
   const puzzles: DailyPuzzle[] = [];
   let dt = parseKey(startDateKey);
   for (let day = 0; day < maxDays; day++) {
-    const banToday = new Set<string>();
+    const banIso = new Set<string>();
+    const banType = new Set<string>();
     const picks: Question[] = [];
     for (const diff of ["easy", "medium", "hard"] as const) {
-      const q = pick(byDiff[diff], banToday, day);
+      const q = pick(byDiff[diff], banIso, banType, day);
       if (!q) break;
       picks.push(q);
       usedQ.add(q.id);
-      banToday.add(q.answerIso);
+      banIso.add(q.answerIso);
+      banType.add(q.clueType);
+      typeCount[q.clueType] = (typeCount[q.clueType] ?? 0) + 1;
       recent.push({ iso: q.answerIso, day });
     }
     if (picks.length < 3) break; // a tier ran dry

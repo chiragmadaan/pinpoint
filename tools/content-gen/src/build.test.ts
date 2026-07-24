@@ -7,6 +7,8 @@ import {
   buildUniqueValue,
   computeObscurity,
   flagEmoji,
+  isSensitiveText,
+  leaksCountryName,
 } from "./build.ts";
 
 test("flagEmoji maps alpha-2 to a flag emoji", () => {
@@ -37,6 +39,32 @@ test("buildUniqueValue ignores rows for countries not in the allowed (map) set",
   const qs = buildUniqueValue(rows, new Set(["FRA"]), "capital", (v) => v);
   assert.equal(qs.length, 1);
   assert.equal(qs[0]!.answerIso, "FRA");
+});
+
+test("leaksCountryName catches name words and demonym prefixes, allows distinctive clues", () => {
+  assert.equal(leaksCountryName("United Arab Emirates dirham", "United Arab Emirates"), true);
+  assert.equal(leaksCountryName("Estonian", "Estonia"), true); // demonym prefix
+  assert.equal(leaksCountryName("Kuwait City", "Kuwait"), true);
+  assert.equal(leaksCountryName("naira", "Nigeria"), false); // distinctive unit -> keep
+  assert.equal(leaksCountryName("Khmer", "Cambodia"), false);
+});
+
+test("buildUniqueValue drops clues that leak the country name", () => {
+  const rows = [{ iso: "ARE", value: "dirham" }, { iso: "NGA", value: "naira" }];
+  const qs = buildUniqueValue(rows, new Set(["ARE", "NGA"]), "currency", (v) => v, (iso) =>
+    iso === "ARE" ? "United Arab Emirates" : "Nigeria",
+  );
+  // "dirham" doesn't leak UAE, but let's prove the leak path with a real leak:
+  const leaky = buildUniqueValue([{ iso: "EST", value: "Estonian" }], new Set(["EST"]), "language", (v) => v, () => "Estonia");
+  assert.equal(qs.length, 2);
+  assert.equal(leaky.length, 0);
+});
+
+test("isSensitiveText flags tragedy/atrocity but allows ordinary history", () => {
+  assert.equal(isSensitiveText("Where did the XYZ genocide happen?"), true);
+  assert.equal(isSensitiveText("The 1986 Chernobyl disaster occurred in which country?"), true);
+  assert.equal(isSensitiveText("In which country was Einstein born?"), false);
+  assert.equal(isSensitiveText("In which country was the Boer War fought?"), false); // war is allowed
 });
 
 test("assignDifficulty splits candidates into easy/medium/hard terciles", () => {
@@ -78,5 +106,20 @@ test("assembleCalendar: no reused questions, distinct countries per day", () => 
       p.questions.map((q) => q.difficulty),
       ["easy", "medium", "hard"],
     );
+  }
+});
+
+test("assembleCalendar gives each day 3 distinct clue types when the pool allows", () => {
+  const mk = (id: string, iso: string, difficulty: Question["difficulty"], clueType: Question["clueType"]): Question => ({
+    id, clueType, difficulty, prompt: id, answerIso: iso, acceptedIso: [iso],
+  });
+  const pool: Question[] = [
+    mk("e1", "A", "easy", "birthplace"), mk("e2", "B", "easy", "locate"),
+    mk("m1", "C", "medium", "capital"), mk("m2", "D", "medium", "birthplace"),
+    mk("h1", "E", "hard", "tld"), mk("h2", "F", "hard", "currency"),
+  ];
+  const cal = assembleCalendar(pool, "2026-08-01", 2, 45, 4);
+  for (const p of cal.puzzles) {
+    assert.equal(new Set(p.questions.map((q) => q.clueType)).size, 3); // no repeated clue type in a day
   }
 });
