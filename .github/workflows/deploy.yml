@@ -30,6 +30,8 @@ jobs:
         env:
           BASE_PATH: /pinpoint/ # must match your repo name; change if the repo isn't "pinpoint"
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true # auto-enable Pages (avoids the "Get Pages site failed" chicken-and-egg)
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/dist
