@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import {
     advance,
     buildShareText,
@@ -16,6 +16,8 @@
     sessionXp,
     startSession,
     submitGuess,
+    TIMER_SECONDS,
+    timeUp,
     todaysPuzzle,
     type Adjacency,
     type DailyPuzzle,
@@ -49,9 +51,43 @@
   let adjacency: Adjacency = {}; // iso -> bordering iso[], for neighbor partial-credit
   let features: MapFeature[] = [];
   let currentPuzzle: DailyPuzzle | null = null;
+  let loaded = false; // data + puzzle resolved
+  let started = false; // player pressed Play (past the welcome screen)
   let done = false;
   let shareText = "";
   let copied = false;
+
+  // Per-question countdown timer.
+  let timeLeft = 0;
+  let totalTime = 0;
+  let timerId: ReturnType<typeof setInterval> | null = null;
+
+  function stopTimer() {
+    if (timerId) clearInterval(timerId);
+    timerId = null;
+  }
+  function startTimer() {
+    stopTimer();
+    const cq = session ? currentQuestion(session) : null;
+    if (!cq) return;
+    totalTime = TIMER_SECONDS[cq.difficulty];
+    timeLeft = totalTime;
+    timerId = setInterval(() => {
+      timeLeft -= 1;
+      if (timeLeft <= 0) {
+        stopTimer();
+        onTimeUp();
+      }
+    }, 1000);
+  }
+  function onTimeUp() {
+    if (session?.phase !== "question") return;
+    session = timeUp(session, adjacency);
+    const r = session.results.at(-1)!;
+    map?.reveal(r.guessIso, r.correctIso);
+    void syncXpBar();
+  }
+  onDestroy(stopTimer);
 
   // Dev-only tools
   let devMenuOpen = false;
@@ -144,21 +180,21 @@
     adjacency = adj;
     // Fall back to the first sample day if today's isn't in the (sample) calendar.
     currentPuzzle = todaysPuzzle(calendar) ?? calendar.puzzles[0] ?? null;
+    loaded = true;
     if (!currentPuzzle) return;
 
+    // If today's already done, jump straight to results; otherwise show the welcome screen (Play).
     if (!devUnlimited && hasCompleted(player, currentPuzzle.date)) {
       done = true;
       shareText = buildShareText(currentPuzzle.date, player.history[currentPuzzle.date] ?? [], player.streak, SHARE_URL, shareOptsFor(player.xp));
-      return;
     }
-
-    await startPlay();
   });
 
   // Start (or restart) a play session for the current puzzle; creates the map once, else resets it.
   async function startPlay() {
     if (!currentPuzzle) return;
     done = false;
+    started = true;
     selected = null;
     session = startSession(currentPuzzle);
     await tick(); // ensure the <canvas> is in the DOM before wiring the map
@@ -176,10 +212,12 @@
       map.reset();
     }
     map.render();
+    startTimer();
   }
 
   function onGuess() {
     if (!session || selected == null) return;
+    stopTimer();
     session = submitGuess(session, adjacency); // partial credit for a bordering country
     const r = session.results.at(-1)!;
     map?.reveal(r.guessIso, r.correctIso);
@@ -188,6 +226,7 @@
 
   function onNext() {
     if (!session) return;
+    stopTimer();
     session = advance(session);
     selected = null;
     if (isComplete(session)) {
@@ -208,6 +247,7 @@
       }
     } else {
       map?.reset(); // clear the previous question's highlight AND zoom back to the full world
+      startTimer(); // fresh countdown for the next question
     }
   }
 
@@ -273,13 +313,27 @@
     {/if}
   </div>
 
-  {#if done}
+  {#if !loaded}
+    <p class="loading">Loading…</p>
+  {:else if done}
     <section class="card">
       <h2>Come back tomorrow!</h2>
       <pre class="share">{shareText}</pre>
       <button on:click={copyShare}>{copied ? "Copied!" : "Share"}</button>
     </section>
+  {:else if !started}
+    <section class="card welcome">
+      <h2>Guess the country 🌍</h2>
+      <p class="welcome-sub">Read a clue, find it on the map. Three puzzles a day.</p>
+      <button on:click={startPlay}>▶ Play</button>
+    </section>
   {:else if q}
+    {#if !revealed}
+      <div class="timer" class:low={timeLeft <= 5} title="Time left">
+        <div class="timer-fill" style="width: {totalTime ? (timeLeft / totalTime) * 100 : 0}%"></div>
+        <span class="timer-num">{timeLeft}s</span>
+      </div>
+    {/if}
     <p class="clue">{q.prompt}</p>
     {#if q.emoji}
       <div
@@ -365,6 +419,14 @@
   .progress { opacity: 0.7; margin: 0 0 0.6rem; }
   canvas { width: 100%; height: auto; border-radius: 10px; touch-action: none; display: block; }
   .hint { opacity: 0.55; font-size: 0.85rem; margin: 0.4rem 0 0; text-align: center; }
+  .timer { position: relative; height: 22px; background: #12293d; border-radius: 999px; overflow: hidden; margin-bottom: 0.6rem; }
+  .timer-fill { height: 100%; background: #3ea672; border-radius: 999px; transition: width 1s linear; }
+  .timer.low .timer-fill { background: #d1495b; }
+  .timer-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 600; }
+  .welcome { text-align: center; padding: 2rem 1rem; }
+  .welcome h2 { font-size: 1.6rem; margin: 0; }
+  .welcome-sub { opacity: 0.8; margin: 0.5rem 0 0; }
+  .loading { opacity: 0.7; }
   button { margin-top: 0.9rem; width: 100%; padding: 0.9rem; font-size: 1.05rem; font-weight: 600;
     border: 0; border-radius: 10px; background: #f2c14e; color: #0b1e33; cursor: pointer; }
   button:disabled { background: #33506b; color: #7f97ab; cursor: not-allowed; }

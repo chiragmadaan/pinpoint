@@ -75,9 +75,9 @@ test("assignDifficulty splits candidates into easy/medium/hard terciles", () => 
   ];
   const obscurity = computeObscurity(countries);
   const cands = ["A", "B", "C"].map((iso) => ({
-    id: `locate-${iso}`,
-    clueType: "locate" as const,
-    prompt: `Locate ${iso}`,
+    id: `capital-${iso}`,
+    clueType: "capital" as const,
+    prompt: `capital ${iso}`,
     answerIso: iso,
     acceptedIso: [iso],
   }));
@@ -85,6 +85,19 @@ test("assignDifficulty splits candidates into easy/medium/hard terciles", () => 
   const byIso = Object.fromEntries(qs.map((q) => [q.answerIso, q.difficulty]));
   assert.equal(byIso.A, "easy"); // most sitelinks -> least obscure -> easiest
   assert.equal(byIso.C, "hard");
+});
+
+test("locate questions never rank hard (single point of failure -> capped at medium)", () => {
+  const obscurity = { A: 0, B: 0.5, C: 1 };
+  const cands = ["A", "B", "C"].map((iso) => ({
+    id: `locate-${iso}`,
+    clueType: "locate" as const,
+    prompt: `Locate ${iso}`,
+    answerIso: iso,
+    acceptedIso: [iso],
+  }));
+  const qs = assignDifficulty(cands, obscurity);
+  assert.ok(!qs.some((q) => q.difficulty === "hard")); // the obscure one is capped to medium
 });
 
 test("assembleCalendar: no reused questions, distinct countries per day", () => {

@@ -7,9 +7,12 @@ import {
   type Adjacency,
   type ScoreConfig,
 } from "./scoring.ts";
-import type { DailyPuzzle, GuessResult, Iso3, Question, Verdict } from "./types.ts";
+import type { DailyPuzzle, Difficulty, GuessResult, Iso3, Question, Verdict } from "./types.ts";
 
 export type Phase = "question" | "revealed" | "done";
+
+/** Seconds allowed per question, by difficulty — harder questions need more time to reason. */
+export const TIMER_SECONDS: Record<Difficulty, number> = { easy: 15, medium: 20, hard: 30 };
 
 export interface Session {
   puzzle: DailyPuzzle;
@@ -42,6 +45,18 @@ export function submitGuess(
   if (s.phase !== "question" || s.selected == null) return s;
   const q = s.puzzle.questions[s.index]!;
   const result = scoreGuess(q, s.selected, adjacency, cfg);
+  return { ...s, results: [...s.results, result], phase: "revealed" };
+}
+
+/**
+ * Time ran out. If a country was selected, submit it; otherwise record a miss (no guess) and reveal.
+ * Anti-cheat: the countdown limits how long a player has to look the answer up.
+ */
+export function timeUp(s: Session, adjacency: Adjacency = {}, cfg: ScoreConfig = DEFAULT_SCORE_CONFIG): Session {
+  if (s.phase !== "question") return s;
+  if (s.selected != null) return submitGuess(s, adjacency, cfg);
+  const q = s.puzzle.questions[s.index]!;
+  const result: GuessResult = { verdict: "wrong", points: 0, guessIso: "", correctIso: q.answerIso };
   return { ...s, results: [...s.results, result], phase: "revealed" };
 }
 

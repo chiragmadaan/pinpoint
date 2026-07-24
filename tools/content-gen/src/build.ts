@@ -167,6 +167,7 @@ export function buildPeopleQuestions(
   clueType: ClueType,
   prompt: (person: string) => string,
   nameOf?: (iso: string) => string,
+  fameRange: { floor: number; ceil: number } = { floor: 0, ceil: 150 },
 ): Candidate[] {
   // Reject a name shared by people from different countries (ambiguous answer).
   const isosByName = new Map<string, Set<string>>();
@@ -185,7 +186,9 @@ export function buildPeopleQuestions(
     if (/^Q\d+$/.test(person)) continue; // no English label available
     const e = best.get(person)!;
     if (nameOf && leaksCountryName(person, nameOf(e.iso))) continue;
-    const fame = Math.min(1, e.sitelinks / 150); // ~150 language editions = globally iconic
+    // Map sitelinks -> fame in [0,1] over the given range (people use a high floor so only true
+    // household names read as "easy"; landmarks/dishes use the default lower range).
+    const fame = Math.min(1, Math.max(0, (e.sitelinks - fameRange.floor) / (fameRange.ceil - fameRange.floor)));
     out.push({
       id: `${clueType}-${slug(person)}-${e.iso}`,
       clueType,
@@ -200,30 +203,29 @@ export function buildPeopleQuestions(
 }
 
 /**
- * Assign easy/medium/hard PER CLUE TYPE (each type gets its own tercile split), so every difficulty
- * tier contains a mix of types — otherwise one type (e.g. birthplace) floods a tier and the daily
- * puzzle feels same-y. Within a type, hardness = fame override, else country obscurity + clue weight.
+ * Assign easy/medium/hard by ABSOLUTE hardness across the whole pool (global terciles), so "easy"
+ * means genuinely easy for a casual player (famous country/person/flag/capital) — NOT "the easiest
+ * of an inherently hard category". Inherently-hard clue types (highest-point, TLD, currency…) carry
+ * a high clue-weight and therefore never fall into the easy tier. Hardness = fame override, else
+ * country obscurity + clue weight. Daily *variety* is handled separately by the type-cap in
+ * assembleCalendar, so we don't need per-type difficulty (which wrongly made obscure peaks "easy").
  */
 export function assignDifficulty(cands: Candidate[], obscurity: Record<string, number>): Question[] {
-  const byType = new Map<string, { c: Candidate; h: number }[]>();
-  for (const c of cands) {
-    const h = c.hardness ?? (obscurity[c.answerIso] ?? 0.5) * 0.85 + (CLUE_WEIGHT[c.clueType] ?? 0.4);
-    let arr = byType.get(c.clueType);
-    if (!arr) byType.set(c.clueType, (arr = []));
-    arr.push({ c, h });
-  }
-  const out: Question[] = [];
-  for (const arr of byType.values()) {
-    arr.sort((a, b) => a.h - b.h);
-    const n = arr.length;
-    const t = Math.floor(n / 3);
-    arr.forEach((s, i) => {
-      const difficulty: Difficulty = n < 3 ? "medium" : i < t ? "easy" : i < 2 * t ? "medium" : "hard";
-      const { hardness: _drop, ...rest } = s.c;
-      out.push({ ...rest, difficulty });
-    });
-  }
-  return out;
+  const scored = cands.map((c) => ({
+    c,
+    h: c.hardness ?? (obscurity[c.answerIso] ?? 0.5) * 0.85 + (CLUE_WEIGHT[c.clueType] ?? 0.4),
+  }));
+  scored.sort((a, b) => a.h - b.h);
+  const n = scored.length;
+  const t = Math.floor(n / 3);
+  return scored.map((s, i) => {
+    let difficulty: Difficulty = i < t ? "easy" : i < 2 * t ? "medium" : "hard";
+    // A truly HARD question needs two failure points: derive the country from the clue AND locate it.
+    // "Locate X" only tests location (one failure point), so it can never be hard — cap at medium.
+    if (s.c.clueType === "locate" && difficulty === "hard") difficulty = "medium";
+    const { hardness: _drop, ...rest } = s.c;
+    return { ...rest, difficulty };
+  });
 }
 
 // --- deterministic shuffle so re-running produces a stable calendar (nice diffs) ---

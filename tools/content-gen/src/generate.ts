@@ -46,9 +46,9 @@ SELECT ?iso ?iso2 ?countryLabel ?sl ?pop ?country WHERE {
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
 
-// World-famous only: >=80 Wikipedia language editions. Nationally/niche-famous people sit far below
-// this, so it filters them out. Bounded per-country (avoids the global-query timeout).
-const FAME_MIN = 80;
+// World-famous only. Household names sit at ~220–340 Wikipedia language editions (Einstein 320,
+// Messi 223); "notable but not famous" people (e.g. Golda Meir, 134) sit lower — so a high floor.
+const FAME_MIN = 150;
 const PER_COUNTRY = 50;
 // Birth-only, bounded per country — the fast pattern (a births+deaths UNION timed out).
 const peopleQuery = (qid: string) => `

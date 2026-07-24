@@ -9,6 +9,7 @@ import {
   sessionXp,
   startSession,
   submitGuess,
+  timeUp,
 } from "./game.ts";
 import type { DailyPuzzle } from "./types.ts";
 
@@ -40,6 +41,16 @@ test("full 3-question session: phases, staggered xp, verdicts", () => {
   assert.ok(isComplete(s));
   assert.deepEqual(sessionVerdicts(s), ["correct", "wrong", "correct"]);
   assert.equal(sessionXp(s), 200 + 0 + 600);
+});
+
+test("timeUp records a miss when nothing selected, else submits the selection", () => {
+  let s = startSession(puzzle);
+  s = timeUp(s, adjacency); // no selection -> miss
+  assert.equal(s.phase, "revealed");
+  assert.equal(s.results.at(-1)!.verdict, "wrong");
+  assert.equal(s.results.at(-1)!.guessIso, "");
+  const s2 = timeUp(selectCountry(startSession(puzzle), "FRA"), adjacency); // FRA is Q1's answer
+  assert.equal(s2.results.at(-1)!.verdict, "correct");
 });
 
 test("select/submit are ignored outside the question phase", () => {
