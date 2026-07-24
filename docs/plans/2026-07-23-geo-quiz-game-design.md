@@ -25,10 +25,23 @@
 ### Why shared (not personalized) difficulty
 Personalized difficulty maximizes skill-fit but **kills shareability** — the thing that made Wordle viral. Since growth depends on free organic sharing, everyone gets the **same** puzzle. Difficulty is expressed as an **arc within the day** (Q1 easy → everyone gets a win; Q3 hard → experts still challenged), not per-player gating.
 
-### Scoring
-- Full points = correct country.
-- Partial credit = a **bordering** country (proximity-based), so the hard Q3 isn't an all-or-nothing brick wall.
-- Small **speed bonus**.
+### Scoring & XP (staggered by difficulty)
+- Correct answer earns **staggered XP**: **easy 200 · medium 400 · hard 600** (`DIFFICULTY_XP` in `packages/core`).
+- A **land-bordering** country is recognized as "Close — a neighbor!" but earns **0 points** (`neighborFraction: 0`). The feedback softens the miss; the score does not reward it. Adjacency is a static alpha-3 border dataset (`apps/web/public/adjacency.json`, generated from mledoze/countries). **Decision (2026-07-24): land borders only** — maritime neighbors (Japan↔South Korea, UK↔France) do **not** count as "Close", and island nations with no land borders (e.g. the Bahamas) have no neighbors at all. This is intentional, not a bug.
+- **No speed bonus** (removed — XP is purely difficulty-based).
+- **No per-answer XP popup.** Instead, an **XP bar** fills as you answer.
+
+### Levels (XP bar + level-up)
+- Player **starts at Level 1**. Levels are **numeric and infinite**. The XP bar shows progress within the current level; when it fills, the level goes up and the bar resets.
+- **Curve:** XP to clear level `L` = `1000 + (L-1)*500` (L1→2 = 1000, L2→3 = 1500, L3→4 = 2000, …). A perfect day = 1200 XP (200+400+600), so early levels take ~1 day and later ones slow gently. Implemented as `levelForXp()` / `xpToClearLevel()` in `packages/core/levels.ts`.
+
+### Trophies (collectible milestone badges)
+- Themed **trophies** unlock at level thresholds and accumulate on a shelf — the shareable, brandable
+  layer on top of the plain numeric level. Current ladder: 🧭 Wanderer (Lv1) · 🗺️ Explorer (Lv4) ·
+  ⛵ Navigator (Lv8) · 🌍 Globetrotter (Lv13) · 📐 Cartographer (Lv19) · 🏆 Atlas (Lv26). Add more
+  freely — levels are infinite, trophies are curated milestones. `TROPHIES` / `trophiesEarned()` /
+  `latestTrophy()` / `trophiesUnlockedBetween()` in `packages/core/levels.ts`.
+- The **latest trophy + level** are included on the share card (growth hook).
 
 ### Progression = meta-layer (not a difficulty gate)
 Daily results feed **XP → rank**, a **streak**, and **country mastery** (each country you correctly involve lights up on a personal globe). Progression rewards consistency/accuracy and is the thing worth syncing to a web account. It never changes which questions you see.
@@ -66,12 +79,17 @@ Nearly every clue type maps to structured, verifiable facts in **Wikidata**, so 
 | "[figure] born here" (hard) | `place of birth` → country |
 | currency / language / landmark / "borders both X and Y" / outline shape | respective properties |
 
-### Pipeline
-1. **Generate** candidates by querying Wikidata per template.
-2. **Validate automatically** — reject anything with more than one defensible answer (Ganga delta spans India *and* Bangladesh; birthplaces where the country later changed; rivers crossing borders). *Ambiguity is the #1 quality killer.* Either drop it, or accept a defined answer-set.
-3. **Rank difficulty** using country "obscurity" (population, Wikipedia pageviews) + clue type → calibrated daily arc.
-4. **Human spot-check** a small queue before questions go live.
-5. **Schedule** into a daily calendar (1 easy + 1 medium + 1 hard/day; no country repeats within a window).
+### Pipeline (implemented — `tools/content-gen`)
+1. **Generate** candidates by querying Wikidata per template (`sparql()` with on-disk cache; Node `fetch` by default, `PINPOINT_FETCH=curl` fallback for sandboxes).
+2. **Validate automatically** — a value is kept only if it maps to **exactly one country**; a value shared by 2+ countries is dropped. A country may appear in multiple questions (South Africa's 3 capitals → 3 questions). Answers are also **intersected with the map dataset** (`countries.geo.json`, ~168 usable) so every answer is tappable.
+3. **Rank difficulty** by **country obscurity** (Wikipedia **sitelink count** as the fame signal) combined with a per-clue-type weight, split into easy/medium/hard **terciles**.
+4. **Curated trivia** (`data/trivia.curated.json`) is merged in with **author-set difficulty** — this is how *fact-obscurity* questions (e.g. "Where was the Boer War fought?" → ZAF) get graded, since fact obscurity can't be auto-derived.
+5. **Schedule** into a no-repeat daily calendar (`assembleCalendar`): 1 easy + 1 medium + 1 hard/day, **every question used at most once**, no country repeated within a 45-day window, 3 distinct countries per day. Stops when a tier runs dry (never silently repeats).
+
+**Current output:** ~772 questions → **256 unique days**. Regenerate with `pnpm content:gen`.
+
+### Flags = emoji (not images)
+Flag questions render the country's **flag emoji** (🇫🇷), derived from its alpha-2 code — no image assets or licensing. The clue emoji is rendered **unselectable** (no copy/drag/right-click) because the emoji's characters encode the alpha-2 code and would otherwise leak the answer. **Caveat:** Windows Chrome renders flag emoji as the 2-letter code rather than a flag — fine for the mobile-first audience, but swap to SVGs if desktop-web becomes important.
 
 ### Licensing guardrails
 - Flags = public domain, safe.
@@ -146,12 +164,17 @@ One game engine + one content/question service power both surfaces — build map
 
 Rules:
 - Guess button **disabled until a country is selected** (no empty submit).
-- **Conditional label:**
-  - "Locate [named country]" questions → button reads just **"Guess"** (showing the name would confirm correctness pre-submit).
-  - Clue-based questions → button reads **"Guess: [selected country]"** (name doesn't reveal clue-correctness; prevents map-misclicks).
-- **Tap tolerance / nearest-country snapping** on selection — now harmless because selection is reversible.
-- **Micro-nations** (Singapore, Malta, Vatican): boosted hit area / confirmation zoom.
-- Guess button in a **fixed bottom bar** (thumb-reachable), separated from map so panning can't trigger it.
+- **Button always reads "Guess"** — the country name is never shown (a name would leak the answer on
+  "locate" questions; showing it only for some types was rejected). *(Supersedes the earlier conditional-label rule.)*
+- **Tap tolerance / nearest-country snapping** on selection — harmless because selection is reversible.
+- **Zoom & pan** (`packages/map`): scroll / pinch to zoom, drag to pan, double-tap to zoom in — the
+  real fix for tapping micro-nations. Tap-vs-drag is distinguished by a movement threshold.
+- **Reveal auto-fit:** on submit, the map zooms/pans so **both the guessed and correct countries fit
+  in view** (padded). Far-apart picks zoom out; adjacent ones zoom in — fixes the "correct country too
+  small to see" problem (e.g. Bahamas). `fitToCountries()` in `packages/map`.
+- **Map resets after each question** — highlight cleared and zoom returned to the full world view.
+- The reveal text also **names the correct country** ("the answer was The Bahamas") as a text backstop.
+- Guess button separated from the map area so panning can't trigger it.
 
 ### Feedback
 - On submit: correct → country flashes green; wrong → your pick flashes red, correct one pulses green, distance arc drawn; partial (neighbor) shown explicitly ("Close! Half points").
@@ -222,5 +245,9 @@ current focus. This also de-risks the *not-guaranteed* Playables acceptance (§1
 - **Genre:** general-knowledge + geography (not geography alone) → infinite content + a moat.
 - **Daily boundary:** LOCAL midnight (Wordle/GeoGuessr convention; device-clock exploit accepted).
 - **Answer model:** MVP single-answer only; full product adds multi-select (Jaccard-scored).
-- **Map engine:** dependency-free equirectangular + Canvas + custom hit-testing (no d3, no tiles).
+- **Map engine:** dependency-free equirectangular + Canvas + custom hit-testing (no d3, no tiles); zoom/pan added.
 - **Build order:** web-first; Playable deferred.
+- **XP:** staggered by difficulty (200/400/600), no speed bonus, no per-answer popup.
+- **Progression:** numeric infinite levels (XP bar; start at Level 1; clear(L) = 1000 + (L-1)*500) + collectible **trophies** unlocked at level milestones.
+- **Guess button:** always reads "Guess" (country name never shown).
+- **Map data:** real country GeoJSON keyed by ISO alpha-3 (`apps/web/public/countries.geo.json`).

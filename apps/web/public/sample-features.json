@@ -1,0 +1,10 @@
+[
+  { "iso": "FRA", "name": "France", "geometry": { "type": "Polygon", "coordinates": [[[-5,42],[8,42],[8,51],[-5,51],[-5,42]]] } },
+  { "iso": "ESP", "name": "Spain", "geometry": { "type": "Polygon", "coordinates": [[[-9,36],[3,36],[3,43],[-9,43],[-9,36]]] } },
+  { "iso": "DEU", "name": "Germany", "geometry": { "type": "Polygon", "coordinates": [[[6,47],[15,47],[15,55],[6,55],[6,47]]] } },
+  { "iso": "ITA", "name": "Italy", "geometry": { "type": "Polygon", "coordinates": [[[7,37],[18,37],[18,47],[7,47],[7,37]]] } },
+  { "iso": "GBR", "name": "United Kingdom", "geometry": { "type": "Polygon", "coordinates": [[[-8,50],[2,50],[2,59],[-8,59],[-8,50]]] } },
+  { "iso": "JPN", "name": "Japan", "geometry": { "type": "Polygon", "coordinates": [[[129,31],[146,31],[146,45],[129,45],[129,31]]] } },
+  { "iso": "USA", "name": "United States", "geometry": { "type": "Polygon", "coordinates": [[[-125,25],[-67,25],[-67,49],[-125,49],[-125,25]]] } },
+  { "iso": "BHS", "name": "Bahamas", "geometry": { "type": "Polygon", "coordinates": [[[-79,21],[-73,21],[-73,27],[-79,27],[-79,21]]] } }
+]

@@ -1,54 +1,46 @@
-import type { GuessResult, Iso3, Question } from "./types.ts";
+import type { Difficulty, GuessResult, Iso3, Question } from "./types.ts";
 
 /** Adjacency: country -> land-bordering countries. Powers partial (neighbor) credit. */
 export type Adjacency = Record<Iso3, Iso3[]>;
 
+/** Staggered XP per difficulty — a correct answer is worth more the harder the question. */
+export const DIFFICULTY_XP: Record<Difficulty, number> = {
+  easy: 200,
+  medium: 400,
+  hard: 600,
+};
+
 export interface ScoreConfig {
-  /** Points for a fully correct guess before speed bonus. */
-  base: number;
-  /** Fraction of `base` awarded for guessing a bordering country. */
+  /** Fraction of the difficulty XP awarded for guessing a bordering country. Default 0 (no credit). */
   neighborFraction: number;
-  /** Max additional points for answering fast. */
-  maxSpeedBonus: number;
-  /** Answers within this window earn a proportional slice of maxSpeedBonus. */
-  speedWindowMs: number;
 }
 
 export const DEFAULT_SCORE_CONFIG: ScoreConfig = {
-  base: 1000,
-  neighborFraction: 0.5,
-  maxSpeedBonus: 250,
-  speedWindowMs: 10_000,
+  neighborFraction: 0, // a neighbor is acknowledged ("Close — a neighbor!") but earns 0 points
 };
-
-/** Linear speed bonus: full at 0ms, zero at/after speedWindowMs. */
-export function speedBonus(elapsedMs: number, cfg: ScoreConfig): number {
-  const frac = Math.max(0, 1 - elapsedMs / cfg.speedWindowMs);
-  return Math.round(cfg.maxSpeedBonus * frac);
-}
 
 /**
  * Score a single guess.
- * - correct  : guess is in the question's acceptedIso set  -> base + speed bonus
- * - neighbor : guess borders the canonical answer          -> base * neighborFraction (no bonus)
+ * - correct  : guess is in the question's acceptedIso set  -> full difficulty XP (200/400/600)
+ * - neighbor : guess borders the canonical answer          -> difficulty XP * neighborFraction (0 by default)
  * - wrong    : otherwise                                    -> 0
  */
 export function scoreGuess(
   question: Question,
   guessIso: Iso3,
-  elapsedMs: number,
   adjacency: Adjacency,
   cfg: ScoreConfig = DEFAULT_SCORE_CONFIG,
 ): GuessResult {
+  const full = DIFFICULTY_XP[question.difficulty];
   const base = { guessIso, correctIso: question.answerIso };
 
   if (question.acceptedIso.includes(guessIso)) {
-    return { ...base, verdict: "correct", points: cfg.base + speedBonus(elapsedMs, cfg) };
+    return { ...base, verdict: "correct", points: full };
   }
 
   const neighbors = adjacency[question.answerIso] ?? [];
   if (neighbors.includes(guessIso)) {
-    return { ...base, verdict: "neighbor", points: Math.round(cfg.base * cfg.neighborFraction) };
+    return { ...base, verdict: "neighbor", points: Math.round(full * cfg.neighborFraction) };
   }
 
   return { ...base, verdict: "wrong", points: 0 };
@@ -57,11 +49,9 @@ export function scoreGuess(
 // ---------------------------------------------------------------------------
 // Multi-select scoring — FULL PRODUCT only (MVP ships single-answer questions).
 // For clues with several correct countries (e.g. Ganga delta -> IND + BGD), the player may select
-// multiple countries before submitting:
+// multiple countries before submitting. Jaccard of selected vs accepted, scaled by difficulty XP:
 //   - full XP if the selected set exactly matches the accepted set
-//   - partial XP if only a subset is selected
-//   - selecting WRONG countries dilutes the score (Jaccard: |correct ∩ selected| / |correct ∪ selected|)
-// so "select everything" can't game it. Exact match => Jaccard 1.0 => full base points.
+//   - partial XP for a subset; wrong picks dilute the score (so "select everything" can't game it)
 // ---------------------------------------------------------------------------
 
 export type MultiVerdict = "correct" | "partial" | "wrong";
@@ -76,7 +66,7 @@ export interface MultiSelectResult {
 export function scoreMultiSelect(
   accepted: Iso3[],
   selected: Iso3[],
-  cfg: ScoreConfig = DEFAULT_SCORE_CONFIG,
+  difficulty: Difficulty,
 ): MultiSelectResult {
   const acc = new Set(accepted);
   const sel = new Set(selected);
@@ -89,7 +79,7 @@ export function scoreMultiSelect(
 
   return {
     verdict,
-    points: Math.round(cfg.base * jaccard),
+    points: Math.round(DIFFICULTY_XP[difficulty] * jaccard),
     correctIso: accepted,
     selectedIso: selected,
   };

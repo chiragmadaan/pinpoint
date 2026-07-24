@@ -33,8 +33,10 @@ export interface Question {
   difficulty: Difficulty;
   /** The clue text shown to the player. */
   prompt: string;
-  /** Optional media (flag/outline). MUST be public-domain / CC — never scraped photos. */
+  /** Optional media (outline etc.). MUST be public-domain / CC — never scraped photos. */
   imageUrl?: string;
+  /** Optional large glyph shown as the clue — e.g. a flag emoji 🇫🇷 for flag questions. */
+  emoji?: string;
   /** The canonical correct country. */
   answerIso: Iso3;
   /**

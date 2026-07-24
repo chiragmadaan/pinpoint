@@ -1,5 +1,6 @@
 node_modules/
 dist/
+tools/content-gen/.cache/
 .svelte-kit/
 *.tsbuildinfo
 .DS_Store

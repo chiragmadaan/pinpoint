@@ -1,106 +1,138 @@
-// Offline content generator: Wikidata SPARQL -> candidate questions -> validated -> daily calendar.
-// Run locally (`pnpm content:gen`); it writes data/questions.json. No server, no runtime cost.
+// Orchestrator: fetch Wikidata -> build validated questions -> merge curated trivia ->
+// assemble a no-repeat calendar -> write questions.json (data/ + apps/web/public/).
 //
-// THE HARD PART IS VALIDATION, NOT GENERATION. A question is only usable if it has exactly one
-// defensible answer (or a small, explicit accepted set). Ambiguity is the #1 quality killer:
-//   - rivers that border/cross multiple countries (Danube), deltas spanning two countries (Ganga)
-//   - people whose birthplace's country changed over time
-//   - capitals/currencies shared by multiple countries
-// The pipeline below MUST drop or hand-curate anything with >1 country unless we set acceptedIso.
+// Run:  pnpm content:gen                          (uses Node fetch)
+//       PINPOINT_FETCH=curl pnpm content:gen      (sandboxes without Node sockets)
 
-import { writeFile } from "node:fs/promises";
-import type { Difficulty, Question, PuzzleCalendar } from "@pinpoint/core";
+import { readFile, writeFile } from "node:fs/promises";
+import type { PuzzleCalendar, Question } from "@pinpoint/core";
+import {
+  assembleCalendar,
+  assignDifficulty,
+  buildFlag,
+  buildLocate,
+  buildUniqueValue,
+  computeObscurity,
+  type CountryMeta,
+} from "./build.ts";
+import { sparql } from "./wikidata.ts";
 
-const WIKIDATA_SPARQL = "https://query.wikidata.org/sparql";
+const url = (p: string) => new URL(p, import.meta.url);
 
-interface Row {
-  countryIso: string;
-  countryLabel: string;
-  value: string; // capital / river / person / etc.
-}
-
-async function sparql(query: string): Promise<Row[]> {
-  const url = `${WIKIDATA_SPARQL}?format=json&query=${encodeURIComponent(query)}`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": "geo-quiz-content-gen/0.0 (contact@example.com)", Accept: "application/sparql-results+json" },
-  });
-  if (!res.ok) throw new Error(`Wikidata ${res.status}`);
-  const json = (await res.json()) as { results: { bindings: Record<string, { value: string }>[] } };
-  return json.results.bindings.map((b) => ({
-    countryIso: b.iso?.value ?? "",
-    countryLabel: b.countryLabel?.value ?? "",
-    value: b.value?.value ?? "",
-  }));
-}
-
-// Example: capital-of clues. Grouping by capital lets us REJECT capitals shared by >1 country.
-const CAPITAL_QUERY = `
-SELECT ?iso ?countryLabel ?value WHERE {
-  ?country wdt:P31 wd:Q6256 ;        # instance of: country
-           wdt:P298 ?iso ;           # ISO 3166-1 alpha-3
-           wdt:P36 ?capital .        # capital
-  ?capital rdfs:label ?value . FILTER(LANG(?value) = "en")
+const Q_BASE = `
+SELECT ?iso ?iso2 ?countryLabel ?sl ?pop WHERE {
+  ?country wdt:P31 wd:Q6256; wdt:P298 ?iso.
+  OPTIONAL { ?country wdt:P297 ?iso2. }
+  OPTIONAL { ?country wdt:P1082 ?pop. }
+  ?country wikibase:sitelinks ?sl.
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
 
-function buildCapitalQuestions(rows: Row[]): Question[] {
-  const byCapital = new Map<string, Row[]>();
-  for (const r of rows) {
-    if (!r.countryIso || !r.value) continue;
-    (byCapital.get(r.value) ?? byCapital.set(r.value, []).get(r.value)!).push(r);
-  }
-  const out: Question[] = [];
-  for (const [capital, group] of byCapital) {
-    if (group.length !== 1) continue; // AMBIGUOUS -> drop
-    const r = group[0]!;
-    out.push({
-      id: `capital-${r.countryIso}`,
-      clueType: "capital",
-      difficulty: "medium",
-      prompt: `Which country's capital is ${capital}?`,
-      answerIso: r.countryIso,
-      acceptedIso: [r.countryIso],
-      source: "wikidata:P36",
-    });
-  }
-  return out;
+const Q_CAPITAL = `
+SELECT ?iso ?capitalLabel WHERE {
+  ?country wdt:P31 wd:Q6256; wdt:P298 ?iso; wdt:P36 ?capital.
+  ?capital rdfs:label ?capitalLabel. FILTER(LANG(?capitalLabel) = "en")
+}`;
+
+const Q_CURRENCY = `
+SELECT ?iso ?currencyLabel WHERE {
+  ?country wdt:P31 wd:Q6256; wdt:P298 ?iso; wdt:P38 ?cur.
+  ?cur rdfs:label ?currencyLabel. FILTER(LANG(?currencyLabel) = "en")
+}`;
+
+const Q_LANGUAGE = `
+SELECT ?iso ?languageLabel WHERE {
+  ?country wdt:P31 wd:Q6256; wdt:P298 ?iso; wdt:P37 ?lang.
+  ?lang rdfs:label ?languageLabel. FILTER(LANG(?languageLabel) = "en")
+}`;
+
+async function mapIsoSet(): Promise<Set<string>> {
+  const fc = JSON.parse(await readFile(url("../../../apps/web/public/countries.geo.json"), "utf8")) as {
+    features: { id: string }[];
+  };
+  return new Set(fc.features.map((f) => f.id));
 }
 
-// TODO: add builders for locate/flag/river-mouth/birthplace with the same "reject ambiguous" rule.
-// TODO GK clue types (Pinpoint = GK + geography). Each still needs a reliable source + validation:
-//   - anthem:      "Country whose national anthem starts with 'God'"           (static)
-//   - nickname:    "Country once known as the 'Pirate Republic'" -> BHS         (static, curated)
-//   - superlative: "Country with the most glaciers / highest Muslim population" (TIME-SENSITIVE!)
-//        -> MUST set timeSensitive:true + asOf, and be re-validated before reuse.
-// TODO: difficulty ranking via population / Wikipedia pageviews to calibrate the daily arc.
-
-/** MVP rule: ship ONLY single-answer questions. Multi-answer (e.g. Ganga delta) is full-product. */
-function mvpSingleAnswerOnly(pool: Question[]): Question[] {
-  return pool.filter((q) => q.acceptedIso.length === 1);
+async function curatedTrivia(allowed: Set<string>): Promise<Question[]> {
+  try {
+    const raw = JSON.parse(await readFile(url("../../../data/trivia.curated.json"), "utf8")) as Question[];
+    return raw.filter((q) => allowed.has(q.answerIso));
+  } catch {
+    return []; // optional file
+  }
 }
 
-function assembleCalendar(pool: Question[], days: number, startDate: string): PuzzleCalendar {
-  const byDiff: Record<Difficulty, Question[]> = { easy: [], medium: [], hard: [] };
-  for (const q of pool) byDiff[q.difficulty].push(q);
-  const puzzles: PuzzleCalendar["puzzles"] = [];
-  const d = new Date(startDate + "T00:00:00Z");
-  for (let i = 0; i < days; i++) {
-    const pick = (arr: Question[]) => arr[i % Math.max(1, arr.length)];
-    const e = pick(byDiff.easy), m = pick(byDiff.medium), h = pick(byDiff.hard);
-    if (!e || !m || !h) break; // ran out of a difficulty band
-    puzzles.push({ date: d.toISOString().slice(0, 10), questions: [e, m, h] });
-    d.setUTCDate(d.getUTCDate() + 1);
-  }
-  return { version: 1, puzzles };
+function todayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 async function main() {
-  const capitals = buildCapitalQuestions(await sparql(CAPITAL_QUERY));
-  // NOTE: needs easy + hard pools too before it can assemble real days; capitals are medium.
-  const pool = mvpSingleAnswerOnly([...capitals]);
-  const calendar = assembleCalendar(pool, 365, "2026-08-01");
-  await writeFile(new URL("../../../data/questions.json", import.meta.url), JSON.stringify(calendar, null, 2));
-  console.log(`Wrote ${calendar.puzzles.length} daily puzzles from ${pool.length} candidate questions.`);
+  const allowed = await mapIsoSet();
+  const [baseRows, capRows, curRows, langRows] = await Promise.all([
+    sparql("base", Q_BASE),
+    sparql("capital", Q_CAPITAL),
+    sparql("currency", Q_CURRENCY),
+    sparql("language", Q_LANGUAGE),
+  ]);
+
+  // De-dupe country meta to one record per ISO (that exists on our map).
+  const metaMap = new Map<string, CountryMeta>();
+  for (const r of baseRows) {
+    if (!allowed.has(r.iso!)) continue;
+    const ex = metaMap.get(r.iso!);
+    if (!ex) {
+      metaMap.set(r.iso!, {
+        iso: r.iso!,
+        name: r.countryLabel!,
+        alpha2: r.iso2,
+        sitelinks: Number(r.sl ?? 0),
+        pop: r.pop ? Number(r.pop) : undefined,
+      });
+    } else if (!ex.alpha2 && r.iso2) {
+      ex.alpha2 = r.iso2;
+    }
+  }
+  const countries = [...metaMap.values()];
+  const obscurity = computeObscurity(countries);
+
+  const auto = [
+    ...buildLocate(countries),
+    ...buildFlag(countries),
+    ...buildUniqueValue(
+      capRows.map((r) => ({ iso: r.iso!, value: r.capitalLabel! })),
+      allowed,
+      "capital",
+      (v) => `Which country's capital is ${v}?`,
+    ),
+    ...buildUniqueValue(
+      curRows.map((r) => ({ iso: r.iso!, value: r.currencyLabel! })),
+      allowed,
+      "currency",
+      (v) => `Which country's currency is the ${v}?`,
+    ),
+    ...buildUniqueValue(
+      langRows.map((r) => ({ iso: r.iso!, value: r.languageLabel! })),
+      allowed,
+      "language",
+      (v) => `${v} is an official language of which country?`,
+    ),
+  ];
+
+  const autoQs = assignDifficulty(auto, obscurity);
+  const curated = await curatedTrivia(allowed);
+  const pool: Question[] = [...autoQs, ...curated];
+
+  const calendar: PuzzleCalendar = assembleCalendar(pool, todayKey());
+
+  await writeFile(url("../../../data/questions.json"), JSON.stringify(calendar));
+  await writeFile(url("../../../apps/web/public/questions.json"), JSON.stringify(calendar));
+
+  const byType: Record<string, number> = {};
+  for (const q of pool) byType[q.clueType] = (byType[q.clueType] ?? 0) + 1;
+  console.log(`Countries on map: ${countries.length}`);
+  console.log(`Candidate questions: ${pool.length}`, byType);
+  console.log(`Calendar: ${calendar.puzzles.length} days (from ${calendar.puzzles[0]?.date})`);
 }
 
 main().catch((e) => {

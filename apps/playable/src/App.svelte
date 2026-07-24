@@ -25,28 +25,22 @@
   let index = 0; // which of the 3 questions
   let selected: Iso3 | null = null; // tapped-but-not-submitted country
   let results: GuessResult[] = [];
-  let startedAt = 0;
 
   $: current = puzzle?.questions[index] ?? null;
-  // The one Playables-shaped UI rule: never reveal the name on "locate" questions.
-  $: guessLabel =
-    current && current.clueType !== "locate" && selected ? `Guess: ${selected}` : "Guess";
 
   onMount(async () => {
     player = await loadPlayerState();
     // TODO: load calendar + adjacency from bundled static JSON, then:
     // puzzle = todaysPuzzle(calendar);
-    startedAt = Date.now();
   });
 
   function submit() {
     if (!current || !selected || !puzzle || !player) return;
-    const r = scoreGuess(current, selected, Date.now() - startedAt, adjacency);
+    const r = scoreGuess(current, selected, adjacency);
     results = [...results, r];
     selected = null;
     if (index < 2) {
       index += 1;
-      startedAt = Date.now();
     } else {
       const xp = results.reduce((s, x) => s + x.points, 0);
       player = recordCompletedDay(
@@ -66,9 +60,9 @@
     <h1>{current.prompt}</h1>
     <p>Question {index + 1} / 3 · {current.difficulty}</p>
     <!-- map goes here; tapping sets `selected` via createWorldMap onSelect -->
-    <button disabled={!selected} on:click={submit}>{guessLabel}</button>
+    <button disabled={!selected} on:click={submit}>Guess</button>
   {:else}
-    <h1>🌍 Geo Quiz</h1>
+    <h1>📍 Pinpoint</h1>
     <p>Loading today's puzzle…</p>
   {/if}
 </main>

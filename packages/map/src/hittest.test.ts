@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { equirectangular } from "./geometry.ts";
+import { equirectangular, geometryBounds } from "./geometry.ts";
 import { resolveLonLat, resolveTap } from "./hittest.ts";
 import type { MapFeature } from "./types.ts";
 
@@ -31,6 +31,10 @@ test("tap near a micro-nation snaps to it within tolerance", () => {
 
 test("tap in open ocean with snapping disabled returns null", () => {
   assert.equal(resolveLonLat([0, -80], FEATURES, { snapKm: 0 }), null);
+});
+
+test("geometryBounds returns the lon/lat extent of a feature", () => {
+  assert.deepEqual(geometryBounds(BIG_WEST.geometry), [-40, 10, -20, 30]);
 });
 
 test("projection round-trips and resolveTap maps a pixel to the right country", () => {

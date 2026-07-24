@@ -1,0 +1,56 @@
+[
+  {
+    "id": "trivia-boer-war",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "prompt": "In which country was the Boer War (1899–1902) mainly fought?",
+    "answerIso": "ZAF",
+    "acceptedIso": ["ZAF"],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-pirate-republic",
+    "clueType": "nickname",
+    "difficulty": "hard",
+    "prompt": "Which country (Nassau) was the base of the early-1700s 'Pirate Republic'?",
+    "answerIso": "BHS",
+    "acceptedIso": ["BHS"],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-ceylon",
+    "clueType": "nickname",
+    "difficulty": "medium",
+    "prompt": "Which country was formerly known as Ceylon?",
+    "answerIso": "LKA",
+    "acceptedIso": ["LKA"],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-siam",
+    "clueType": "nickname",
+    "difficulty": "medium",
+    "prompt": "Which country was formerly known as Siam?",
+    "answerIso": "THA",
+    "acceptedIso": ["THA"],
+    "source": "curated:history"
+  },
+  {
+    "id": "landmark-machu-picchu",
+    "clueType": "landmark",
+    "difficulty": "easy",
+    "prompt": "Which country is home to Machu Picchu?",
+    "answerIso": "PER",
+    "acceptedIso": ["PER"],
+    "source": "curated:landmark"
+  },
+  {
+    "id": "superlative-most-pyramids",
+    "clueType": "superlative",
+    "difficulty": "hard",
+    "prompt": "Which country has the most pyramids in the world?",
+    "answerIso": "SDN",
+    "acceptedIso": ["SDN"],
+    "source": "curated:superlative"
+  }
+]

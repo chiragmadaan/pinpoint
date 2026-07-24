@@ -62,6 +62,24 @@ export function centroid(geom: Geometry): LonLat {
   return n === 0 ? [0, 0] : [sx / n, sy / n];
 }
 
+/** Lon/lat bounding box of a geometry: [minLon, minLat, maxLon, maxLat]. */
+export function geometryBounds(geom: Geometry): [number, number, number, number] {
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  const rings: Ring[] = geom.type === "Polygon" ? geom.coordinates : geom.coordinates.flat();
+  for (const ring of rings) {
+    for (const [lon, lat] of ring) {
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+  }
+  return [minLon, minLat, maxLon, maxLat];
+}
+
 /** Great-circle distance in km between two lon/lat points. */
 export function haversineKm(a: LonLat, b: LonLat): number {
   const R = 6371;
