@@ -343,6 +343,10 @@
     background: #d1495b; color: #fff; border-radius: 6px; }
   .map-wrap { position: relative; }
   .zoom-controls { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+  /* Hide ＋/－ on touch devices (pinch-to-zoom covers it); show only where there's a mouse. */
+  @media (hover: none) and (pointer: coarse) {
+    .zoom-controls { display: none; }
+  }
   .zoom-btn { width: 38px; height: 38px; margin: 0; padding: 0; font-size: 1.4rem; line-height: 1;
     background: rgba(11, 30, 51, 0.85); color: #eaf2f8; border: 1px solid #33506b; border-radius: 8px; }
   .level { display: flex; align-items: center; gap: 0.6rem; margin: 0.3rem 0 0.6rem; }

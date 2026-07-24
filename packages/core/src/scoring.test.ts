@@ -77,10 +77,11 @@ test("leveling: starts at level 1, fills and rolls over per the curve", () => {
 });
 
 test("trophies unlock at level thresholds and accumulate", () => {
-  assert.equal(latestTrophy(1)?.name, "Wanderer");
+  assert.equal(latestTrophy(1)?.name, "Noob"); // everyone starts as a Noob
+  assert.equal(latestTrophy(2)?.name, "Noob");
   assert.equal(latestTrophy(3)?.name, "Wanderer");
-  assert.equal(latestTrophy(4)?.name, "Explorer");
-  assert.equal(latestTrophy(26)?.name, "Atlas");
-  assert.equal(trophiesEarned(8).length, 3); // Wanderer, Explorer, Navigator
-  assert.deepEqual(trophiesUnlockedBetween(3, 8).map((t) => t.name), ["Explorer", "Navigator"]);
+  assert.equal(latestTrophy(5)?.name, "Explorer");
+  assert.equal(latestTrophy(50)?.name, "Legend");
+  assert.equal(trophiesEarned(1).length, 1); // just Noob
+  assert.deepEqual(trophiesUnlockedBetween(1, 5).map((t) => t.name), ["Wanderer", "Explorer"]);
 });

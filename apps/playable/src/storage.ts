@@ -9,7 +9,7 @@
 
 import { emptyPlayerState, type PlayerState } from "@pinpoint/core";
 
-const KEY = "geoquiz.player";
+const KEY = "pinpoint.player";
 
 export async function loadPlayerState(): Promise<PlayerState> {
   try {

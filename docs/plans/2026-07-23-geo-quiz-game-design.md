@@ -37,10 +37,12 @@ Personalized difficulty maximizes skill-fit but **kills shareability** — the t
 
 ### Trophies (collectible milestone badges)
 - Themed **trophies** unlock at level thresholds and accumulate on a shelf — the shareable, brandable
-  layer on top of the plain numeric level. Current ladder: 🧭 Wanderer (Lv1) · 🗺️ Explorer (Lv4) ·
-  ⛵ Navigator (Lv8) · 🌍 Globetrotter (Lv13) · 📐 Cartographer (Lv19) · 🏆 Atlas (Lv26). Add more
-  freely — levels are infinite, trophies are curated milestones. `TROPHIES` / `trophiesEarned()` /
-  `latestTrophy()` / `trophiesUnlockedBetween()` in `packages/core/levels.ts`.
+  layer on top of the plain numeric level. Current ladder: 🐣 Noob (Lv1) · 🧭 Wanderer (Lv3) ·
+  🗺️ Explorer (Lv5) · 🧗 Pathfinder (Lv8) · ⛵ Navigator (Lv11) · 🌍 Globetrotter (Lv15) ·
+  🚀 Voyager (Lv19) · 📐 Cartographer (Lv23) · 📚 Geographer (Lv28) · 🌎 Continental (Lv34) ·
+  🏆 Atlas (Lv40) · 👑 World Master (Lv45) · 🏅 Legend (Lv50). Add more freely — levels are infinite,
+  trophies are curated milestones. `TROPHIES` / `trophiesEarned()` / `latestTrophy()` /
+  `trophiesUnlockedBetween()` in `packages/core/levels.ts`.
 - The **latest trophy + level** are included on the share card (growth hook).
 
 ### Progression = meta-layer (not a difficulty gate)

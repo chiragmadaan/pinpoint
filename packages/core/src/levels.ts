@@ -61,12 +61,19 @@ export interface Trophy {
 
 /** Ascending by unlock level. Add more milestones freely — levels are infinite, trophies are curated. */
 export const TROPHIES: readonly Trophy[] = [
-  { name: "Wanderer", emoji: "🧭", level: 1 },
-  { name: "Explorer", emoji: "🗺️", level: 4 },
-  { name: "Navigator", emoji: "⛵", level: 8 },
-  { name: "Globetrotter", emoji: "🌍", level: 13 },
-  { name: "Cartographer", emoji: "📐", level: 19 },
-  { name: "Atlas", emoji: "🏆", level: 26 },
+  { name: "Noob", emoji: "🐣", level: 1 },
+  { name: "Wanderer", emoji: "🧭", level: 3 },
+  { name: "Explorer", emoji: "🗺️", level: 5 },
+  { name: "Pathfinder", emoji: "🧗", level: 8 },
+  { name: "Navigator", emoji: "⛵", level: 11 },
+  { name: "Globetrotter", emoji: "🌍", level: 15 },
+  { name: "Voyager", emoji: "🚀", level: 19 },
+  { name: "Cartographer", emoji: "📐", level: 23 },
+  { name: "Geographer", emoji: "📚", level: 28 },
+  { name: "Continental", emoji: "🌎", level: 34 },
+  { name: "Atlas", emoji: "🏆", level: 40 },
+  { name: "World Master", emoji: "👑", level: 45 },
+  { name: "Legend", emoji: "🏅", level: 50 },
 ];
 
 /** All trophies unlocked at or below the given level (in unlock order). */
