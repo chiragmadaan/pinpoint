@@ -33,7 +33,9 @@
     savePlayerState,
   } from "./lib/storage";
 
-  const SHARE_URL = "https://pinpoint.example"; // TODO: real domain
+  // Points at wherever the app is actually served (localhost in dev, the Pages URL in prod).
+  const SHARE_URL =
+    typeof location !== "undefined" ? location.origin + import.meta.env.BASE_URL : "https://pinpoint.example";
   const DEV = import.meta.env.DEV; // true under `pnpm dev`, stripped from production builds
   const EMOJI: Record<Verdict, string> = { correct: "🟩", neighbor: "🟨", wrong: "⬛" };
 
@@ -140,7 +142,7 @@
     names = Object.fromEntries(feats.map((f) => [f.iso, f.name ?? f.iso]));
     adjacency = adj;
     // Fall back to the first sample day if today's isn't in the (sample) calendar.
-    currentPuzzle = todaysPuzzle(calendar) ?? calendar.puzzles[0];
+    currentPuzzle = todaysPuzzle(calendar) ?? calendar.puzzles[0] ?? null;
     if (!currentPuzzle) return;
 
     if (!devUnlimited && hasCompleted(player, currentPuzzle.date)) {
