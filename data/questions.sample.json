@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "puzzles": [
+    {
+      "date": "2026-08-01",
+      "questions": [
+        {
+          "id": "locate-FRA",
+          "clueType": "locate",
+          "difficulty": "easy",
+          "prompt": "Locate France",
+          "answerIso": "FRA",
+          "acceptedIso": ["FRA"],
+          "source": "manual:sample"
+        },
+        {
+          "id": "capital-JPN",
+          "clueType": "capital",
+          "difficulty": "medium",
+          "prompt": "Which country's capital is Tokyo?",
+          "answerIso": "JPN",
+          "acceptedIso": ["JPN"],
+          "source": "wikidata:P36"
+        },
+        {
+          "id": "nickname-BHS",
+          "clueType": "nickname",
+          "difficulty": "hard",
+          "prompt": "Which country (Nassau) was once the base of the early-1700s 'Pirate Republic'?",
+          "answerIso": "BHS",
+          "acceptedIso": ["BHS"],
+          "source": "manual:curated-GK"
+        }
+      ]
+    }
+  ]
+}

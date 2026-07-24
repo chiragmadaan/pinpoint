@@ -1,0 +1,17 @@
+{
+  "name": "pinpoint",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Daily geography map-quiz game (Wordle habit + GeoGuessr map skill).",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev:playable": "pnpm --filter @pinpoint/playable dev",
+    "dev:web": "pnpm --filter @pinpoint/web dev",
+    "test": "pnpm -r test",
+    "content:gen": "pnpm --filter @pinpoint/content-gen gen"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}
