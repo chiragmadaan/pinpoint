@@ -36,7 +36,8 @@
   // Points at wherever the app is actually served (localhost in dev, the Pages URL in prod).
   const SHARE_URL =
     typeof location !== "undefined" ? location.origin + import.meta.env.BASE_URL : "https://pinpoint.example";
-  const DEV = import.meta.env.DEV; // true under `pnpm dev`, stripped from production builds
+  // Dev tools show under `pnpm dev`, OR in a build made with VITE_DEV_TOOLS=1 (the hosted /dev/ variant).
+  const DEV = import.meta.env.DEV || import.meta.env.VITE_DEV_TOOLS === "1";
   const EMOJI: Record<Verdict, string> = { correct: "🟩", neighbor: "🟨", wrong: "⬛" };
 
   let canvas: HTMLCanvasElement;

@@ -1,6 +1,9 @@
 import { emptyPlayerState, type PlayerState } from "@pinpoint/core";
 
-const KEY = "pinpoint.player";
+// The hosted /dev/ build shares an origin with production, so give it a separate key — otherwise
+// dev testing (grinding XP, resetting) would overwrite your real progress on the prod site.
+const DEV_TOOLS = import.meta.env.DEV || import.meta.env.VITE_DEV_TOOLS === "1";
+const KEY = DEV_TOOLS ? "pinpoint.player.dev" : "pinpoint.player";
 
 export function loadPlayerState(): PlayerState {
   try {

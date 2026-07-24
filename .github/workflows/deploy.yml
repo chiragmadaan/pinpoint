@@ -25,10 +25,15 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
-      - name: Build web app
+      - name: Build web app (production)
         run: pnpm --filter @pinpoint/web build
         env:
           BASE_PATH: /pinpoint/ # must match your repo name; change if the repo isn't "pinpoint"
+      - name: Build dev variant (with dev tools) into /dev
+        run: pnpm --filter @pinpoint/web exec vite build --outDir dist/dev --emptyOutDir
+        env:
+          BASE_PATH: /pinpoint/dev/
+          VITE_DEV_TOOLS: "1"
       - uses: actions/configure-pages@v5
         with:
           enablement: true # auto-enable Pages (avoids the "Get Pages site failed" chicken-and-egg)

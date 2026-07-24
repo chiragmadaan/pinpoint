@@ -36,7 +36,12 @@ A **⚙ Dev** button in the header opens a dev menu with:
 - **Reset progress** — wipes local XP/streak/history so you can replay.
 - **Unlimited questions** — bypasses the daily 3-question limit and replays endlessly (XP still accrues), for testing leveling/trophies. The toggle persists across resets.
 
-The map also has **＋/－ zoom buttons** (in addition to scroll/pinch/drag).
+The map also has **＋/－ zoom buttons** (desktop only; touch devices use pinch).
+
+**Hosted dev build:** CI publishes a second build with dev tools enabled to `/<repo>/dev/`
+(e.g. `https://chiragmadaan.github.io/pinpoint/dev/`) alongside the clean production site at
+`/<repo>/`. The dev build is flagged via `VITE_DEV_TOOLS=1` and uses a **separate `localStorage`
+key** (`pinpoint.player.dev`) so testing there never touches real progress on the prod site.
 
 ## Key platform constraints (why the map is self-contained)
 YouTube Playables forbids **all external network calls** except Google/YouTube APIs, forbids
