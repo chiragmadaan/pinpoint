@@ -257,18 +257,24 @@ async function main() {
   const autoQs = assignDifficulty(auto, obscurity);
   const curated = await curatedTrivia(allowed);
   // Drop anything that evokes tragedy/atrocity (keeps the daily light).
-  const pool: Question[] = [...autoQs, ...curated].filter((q) => !isSensitiveText(q.prompt));
+  const all: Question[] = [...autoQs, ...curated].filter((q) => !isSensitiveText(q.prompt));
 
-  const calendar: PuzzleCalendar = assembleCalendar(pool, todayKey());
+  // Obscure, near-unanswerable types move OUT of the mandatory 3 into the bonus (unlocked on 3/3).
+  const BONUS_TYPES = new Set(["calling-code", "tld", "highest-point", "currency"]);
+  const mandatory = all.filter((q) => !BONUS_TYPES.has(q.clueType));
+  const bonusPool = all.filter((q) => BONUS_TYPES.has(q.clueType));
+
+  const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 400, 45, 0.28, bonusPool);
 
   await writeFile(url("../../../data/questions.json"), JSON.stringify(calendar));
   await writeFile(url("../../../apps/web/public/questions.json"), JSON.stringify(calendar));
 
   const byType: Record<string, number> = {};
-  for (const q of pool) byType[q.clueType] = (byType[q.clueType] ?? 0) + 1;
+  for (const q of all) byType[q.clueType] = (byType[q.clueType] ?? 0) + 1;
+  const withBonus = calendar.puzzles.filter((p) => p.bonus).length;
   console.log(`Countries on map: ${countries.length}`);
-  console.log(`Candidate questions: ${pool.length}`, byType);
-  console.log(`Calendar: ${calendar.puzzles.length} days (from ${calendar.puzzles[0]?.date})`);
+  console.log(`Candidates: ${all.length} (mandatory ${mandatory.length}, bonus ${bonusPool.length})`, byType);
+  console.log(`Calendar: ${calendar.puzzles.length} days (${withBonus} with bonus), from ${calendar.puzzles[0]?.date}`);
 }
 
 main().catch((e) => {

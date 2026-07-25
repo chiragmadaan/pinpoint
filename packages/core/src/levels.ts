@@ -91,3 +91,32 @@ export function latestTrophy(level: number): Trophy | null {
 export function trophiesUnlockedBetween(fromLevel: number, toLevel: number): Trophy[] {
   return TROPHIES.filter((t) => t.level > fromLevel && t.level <= toLevel);
 }
+
+/** Cumulative XP required to reach a level (level 1 = 0). */
+export function xpToReachLevel(level: number): number {
+  let cum = 0;
+  for (let l = 1; l < level; l++) cum += xpToClearLevel(l);
+  return cum;
+}
+
+export interface TrophyProgress {
+  earned: Trophy[];
+  next: Trophy | null; // null when all trophies are collected
+  progress: number; // 0..1 from the last earned trophy toward the next (1 when maxed)
+}
+
+/**
+ * Progress toward the next trophy — the UI's progression signal now that numeric levels are hidden.
+ * The bar fills from the XP of the last-earned trophy to the XP of the next trophy.
+ */
+export function trophyProgress(totalXp: number): TrophyProgress {
+  const { level } = levelForXp(totalXp);
+  const earned = trophiesEarned(level);
+  const next = TROPHIES.find((t) => t.level > level) ?? null;
+  if (!next) return { earned, next: null, progress: 1 };
+  const fromLevel = earned.length ? earned[earned.length - 1]!.level : 1;
+  const lo = xpToReachLevel(fromLevel);
+  const hi = xpToReachLevel(next.level);
+  const progress = hi > lo ? Math.min(1, Math.max(0, (totalXp - lo) / (hi - lo))) : 0;
+  return { earned, next, progress };
+}

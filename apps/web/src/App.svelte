@@ -1,17 +1,17 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
   import {
+    acedMain,
     advance,
     buildShareText,
     currentQuestion,
+    DEFAULT_SCORE_CONFIG,
     emptyPlayerState,
     hasCompleted,
+    isBonusQuestion,
     isComplete,
-    latestTrophy,
-    levelForXp,
     recordCompletedDay,
-    trophiesEarned,
-    trophiesUnlockedBetween,
+    trophyProgress,
     selectCountry,
     sessionVerdicts,
     sessionXp,
@@ -66,9 +66,16 @@
   let currentPuzzle: DailyPuzzle | null = null;
   let loaded = false; // data + puzzle resolved
   let started = false; // player pressed Play (past the welcome screen)
+  let isTouch = false; // touch device (pinch) vs mouse (scroll/buttons) — tailors the hint text
+  let namesOn = false; // country-names aid: labels the map
+  let namesUsed = false; // sticky: once names are shown this session, points stay halved (anti-cheat)
   let done = false;
   let shareText = "";
   let copied = false;
+  let bonusStatus: "solved" | "missed" | undefined; // for the results card
+
+  const bonusFrom = (verdicts: string[]): "solved" | "missed" | undefined =>
+    verdicts.length >= 4 ? (verdicts[3] === "correct" ? "solved" : "missed") : undefined;
 
   // Per-question countdown timer (rendered as a depleting ring, not a reverse bar).
   let timeLeft = 0;
@@ -106,10 +113,10 @@
   }
   function onTimeUp() {
     if (session?.phase !== "question") return;
-    session = timeUp(session, adjacency);
+    session = timeUp(session, adjacency, scoreCfg());
     const r = session.results.at(-1)!;
     map?.reveal(r.guessIso, r.correctIso);
-    void syncXpBar();
+    void syncBar();
   }
   onDestroy(stopTimer);
 
@@ -128,47 +135,48 @@
     return { destroy: () => document.removeEventListener("click", handler) };
   }
 
-  // XP bar display state (animated separately from the true level so level-ups fill-then-reset
-  // instead of appearing to jump backwards).
-  let displayLevel = 1;
+  // Trophy-progress bar. Numeric levels are internal only; the visible progression is the bar
+  // filling toward the NEXT trophy. On crossing a trophy it fills to full, celebrates, then resets.
+  let displayEarned = 0; // count of trophies the bar has "reached"
   let displayPct = 0;
   let barNoTransition = false;
   let barAnimating = false;
   let barPending = false;
-  const BAR_FILL_MS = 1200; // how long the bar takes to fill (slower = more satisfying)
-  const BAR_MS = BAR_FILL_MS + 120; // wait per phase; must exceed the fill transition
+  const BAR_FILL_MS = 1200;
+  const BAR_MS = BAR_FILL_MS + 120;
   const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-  async function syncXpBar() {
+  async function syncBar() {
     if (barAnimating) {
-      barPending = true; // coalesce rapid updates; re-run once the current animation finishes
+      barPending = true;
       return;
     }
     barAnimating = true;
     do {
       barPending = false;
-      const target = levelForXp(player.xp + (session ? sessionXp(session) : 0));
-      if (target.level < displayLevel) {
-        // e.g. dev reset -> snap down without a backwards animation
+      const target = trophyProgress(player.xp + (session ? sessionXp(session) : 0));
+      const targetEarned = target.earned.length;
+      if (targetEarned < displayEarned) {
+        // dev reset -> snap down without a backwards animation
         barNoTransition = true;
-        displayLevel = target.level;
+        displayEarned = targetEarned;
         displayPct = Math.round(target.progress * 100);
         await tick();
         barNoTransition = false;
       } else {
-        while (displayLevel < target.level) {
-          displayPct = 100; // fill the current level to full
+        while (displayEarned < targetEarned) {
+          displayPct = 100; // fill to the trophy
           await wait(BAR_MS);
-          barNoTransition = true; // jump back to empty WITHOUT animating backwards
+          const justEarned = target.earned[displayEarned]; // the trophy we just crossed
+          if (justEarned) showTrophy(justEarned);
+          barNoTransition = true; // reset to empty without animating backwards
           displayPct = 0;
-          displayLevel += 1;
-          const unlocked = trophiesUnlockedBetween(displayLevel - 1, displayLevel);
-          if (unlocked.length) showTrophy(unlocked[0]!); // celebrate at the moment of level-up
+          displayEarned += 1;
           await tick();
           await wait(30);
           barNoTransition = false;
         }
-        displayPct = Math.round(target.progress * 100); // fill toward the new level's progress
+        displayPct = Math.round(target.progress * 100); // fill toward the next trophy
         await wait(BAR_MS);
       }
     } while (barPending);
@@ -180,24 +188,37 @@
   $: lastResult = revealed ? (session!.results.at(-1) ?? null) : null;
   $: answerName = lastResult ? (names[lastResult.correctIso] ?? lastResult.correctIso) : "";
   $: guessName = lastResult?.guessIso ? (names[lastResult.guessIso] ?? lastResult.guessIso) : "";
-  // Live XP = banked XP + XP earned so far today; drives the bar/level and fills as you answer.
+  // Live XP = banked XP + XP earned so far today; drives the trophy bar as you answer.
   $: liveXp = player.xp + (session ? sessionXp(session) : 0);
-  $: lvl = levelForXp(liveXp);
-  $: trophies = trophiesEarned(lvl.level);
+  $: prog = trophyProgress(liveXp);
+  $: isBonus = session ? isBonusQuestion(session) : false;
+  $: nextLabel = !session
+    ? ""
+    : isBonus
+      ? "See results"
+      : session.index === 2
+        ? acedMain(session)
+          ? "Bonus question →"
+          : "See results"
+        : "Next";
+
+  // Points multiplier: bonus question is worth 2x; using the names aid halves everything for the
+  // whole session (sticky — peeking then unchecking must not restore full points).
+  const scoreCfg = () => ({ ...DEFAULT_SCORE_CONFIG, multiplier: (isBonus ? 2 : 1) * (namesUsed ? 0.5 : 1) });
 
   const shareOptsFor = (xp: number) => {
-    const l = levelForXp(xp);
-    const t = latestTrophy(l.level);
-    return { level: l.level, trophy: t ? `${t.emoji} ${t.name}` : undefined };
+    const t = trophyProgress(xp).earned.at(-1);
+    return { trophy: t ? `${t.emoji} ${t.name}` : undefined };
   };
 
   onMount(async () => {
+    isTouch = typeof window !== "undefined" && !!window.matchMedia?.("(hover: none) and (pointer: coarse)").matches;
     player = loadPlayerState();
-    // Seed the XP bar to the player's current standing without an intro animation.
-    const initLvl = levelForXp(player.xp);
+    // Seed the trophy bar to the player's current standing without an intro animation.
+    const initProg = trophyProgress(player.xp);
     barNoTransition = true;
-    displayLevel = initLvl.level;
-    displayPct = Math.round(initLvl.progress * 100);
+    displayEarned = initProg.earned.length;
+    displayPct = Math.round(initProg.progress * 100);
     await tick();
     barNoTransition = false;
 
@@ -213,7 +234,12 @@
     // If today's already done, jump straight to results; otherwise show the welcome screen (Play).
     if (!devUnlimited && hasCompleted(player, currentPuzzle.date)) {
       done = true;
-      shareText = buildShareText(currentPuzzle.date, player.history[currentPuzzle.date] ?? [], player.streak, SHARE_URL, shareOptsFor(player.xp));
+      const hist = player.history[currentPuzzle.date] ?? [];
+      bonusStatus = bonusFrom(hist);
+      shareText = buildShareText(currentPuzzle.date, hist.slice(0, 3), player.streak, SHARE_URL, {
+        ...shareOptsFor(player.xp),
+        bonus: bonusStatus,
+      });
     }
   });
 
@@ -223,6 +249,8 @@
     done = false;
     started = true;
     selected = null;
+    namesOn = false;
+    namesUsed = false; // fresh session -> aid and its penalty reset
     session = startSession(currentPuzzle);
     await tick(); // ensure the <canvas> is in the DOM before wiring the map
     if (!map) {
@@ -238,6 +266,7 @@
     } else {
       map.reset();
     }
+    map.setLabels(namesOn);
     map.render();
     startTimer();
   }
@@ -245,10 +274,10 @@
   function onGuess() {
     if (!session || selected == null) return;
     stopTimer();
-    session = submitGuess(session, adjacency); // partial credit for a bordering country
+    session = submitGuess(session, adjacency, scoreCfg());
     const r = session.results.at(-1)!;
     map?.reveal(r.guessIso, r.correctIso);
-    void syncXpBar(); // animate the bar (fill-then-rollover on level-up)
+    void syncBar(); // animate the trophy bar (fill-then-rollover on unlock)
   }
 
   function onNext() {
@@ -258,7 +287,9 @@
     selected = null;
     if (isComplete(session)) {
       const date = session.puzzle.date;
-      const verdicts = sessionVerdicts(session);
+      const allVerdicts = sessionVerdicts(session);
+      const mandatory = allVerdicts.slice(0, 3); // grid/history is the mandatory 3
+      bonusStatus = bonusFrom(allVerdicts); // solved / missed / (undefined if not unlocked)
       const gained = sessionXp(session);
       if (devUnlimited) {
         // Dev: recordCompletedDay is idempotent per day, so bank XP directly and replay immediately.
@@ -266,9 +297,10 @@
         savePlayerState(player);
         void startPlay();
       } else {
-        player = recordCompletedDay(player, date, verdicts, gained);
+        // Persist ALL verdicts (incl. the 4th bonus) so the star survives a reload.
+        player = recordCompletedDay(player, date, allVerdicts, gained);
         savePlayerState(player);
-        shareText = buildShareText(date, verdicts, player.streak, SHARE_URL, shareOptsFor(player.xp));
+        shareText = buildShareText(date, mandatory, player.streak, SHARE_URL, { ...shareOptsFor(player.xp), bonus: bonusStatus });
         session = null; // avoid double-counting today's XP in liveXp now that it's banked
         done = true;
       }
@@ -290,6 +322,12 @@
   function devReset() {
     clearPlayerState();
     location.reload(); // fresh state + re-run onMount -> replay today's puzzle
+  }
+
+  function toggleNames() {
+    namesOn = !namesOn;
+    if (namesOn) namesUsed = true; // sticky penalty for the rest of the session
+    map?.setLabels(namesOn);
   }
 
   function toggleUnlimited() {
@@ -327,23 +365,20 @@
     </div>
   {/if}
 
-  <div class="level">
-    <span class="lvl-label">Level {displayLevel}</span>
+  <div class="trophies" title="Trophies earned">
+    {#each prog.earned as t (t.name)}
+      <span class="trophy" title={t.name}>{t.emoji}</span>
+    {/each}
+  </div>
+
+  <div class="trophy-bar" title={prog.next ? `Progress to ${prog.next.name}` : "All trophies earned!"}>
     <div class="xpbar">
       <div
         class="xpfill"
         style="width: {displayPct}%; transition: {barNoTransition ? 'none' : `width ${BAR_FILL_MS}ms ease`}"
       ></div>
     </div>
-  </div>
-
-  <div class="trophies" title="Trophies earned">
-    {#each trophies as t (t.name)}
-      <span class="trophy" title={t.name}>{t.emoji}</span>
-    {/each}
-    {#if trophies.length === 0}
-      <span class="trophy-empty">No trophies yet — earn your first at Level 1</span>
-    {/if}
+    <span class="next-trophy">{prog.next ? prog.next.emoji : "🏅"}</span>
   </div>
 
   {#if !loaded}
@@ -351,6 +386,11 @@
   {:else if done}
     <section class="card">
       <h2>Come back tomorrow!</h2>
+      {#if bonusStatus === "solved"}
+        <p class="bonus-line good">⭐ Bonus solved!</p>
+      {:else if bonusStatus === "missed"}
+        <p class="bonus-line">✩ Bonus missed — so close!</p>
+      {/if}
       <pre class="share">{shareText}</pre>
       <button on:click={copyShare}>{copied ? "Copied!" : "Share"}</button>
     </section>
@@ -391,7 +431,9 @@
         <div class="flag-emoji" role="img" aria-label="flag" on:contextmenu|preventDefault>{q.emoji}</div>
       {/if}
     {/if}
-    <p class="progress">Question {(session?.index ?? 0) + 1} / 3 · {q.difficulty}</p>
+    <p class="progress">
+      {#if isBonus}⭐ Bonus question{:else}Question {(session?.index ?? 0) + 1} / 3{/if} · {q.difficulty}
+    </p>
     <div class="map-wrap">
       <canvas bind:this={canvas} width="720" height="360"></canvas>
       <div class="zoom-controls">
@@ -399,7 +441,7 @@
         <button class="zoom-btn" on:click={() => map?.zoomBy(1 / 1.4)} aria-label="Zoom out" title="Zoom out">－</button>
       </div>
     </div>
-    <p class="hint">Scroll, pinch, or use ＋/－ to zoom · drag to pan</p>
+    <p class="hint">{isTouch ? "Pinch to zoom · drag to pan" : "Scroll or use ＋/－ to zoom · drag to pan"}</p>
 
     {#if revealed && lastResult}
       <p class="result" class:good={lastResult.verdict === "correct"}>
@@ -411,9 +453,13 @@
           {EMOJI.wrong} Not quite — the answer was {answerName}. {#if lastResult.guessIso}You picked {guessName}.{/if}
         {/if}
       </p>
-      <button on:click={onNext}>{session && session.index < 2 ? "Next" : "See results"}</button>
+      <button on:click={onNext}>{nextLabel}</button>
     {:else}
       <button disabled={!selected} on:click={onGuess}>Guess</button>
+      <label class="names-toggle">
+        <input type="checkbox" checked={namesOn} on:change={toggleNames} />
+        {namesUsed ? "Country names — ½ points this game" : "Show country names (½ points)"}
+      </label>
     {/if}
   {:else}
     <p>Loading today's puzzle…</p>
@@ -451,13 +497,12 @@
   }
   .zoom-btn { width: 38px; height: 38px; margin: 0; padding: 0; font-size: 1.4rem; line-height: 1;
     background: rgba(11, 30, 51, 0.85); color: #eaf2f8; border: 1px solid #33506b; border-radius: 8px; }
-  .level { display: flex; align-items: center; gap: 0.6rem; margin: 0.3rem 0 0.6rem; }
-  .lvl-label { font-weight: 600; white-space: nowrap; }
+  .trophy-bar { display: flex; align-items: center; gap: 0.5rem; margin: 0.3rem 0 0.6rem; }
   .xpbar { flex: 1; height: 12px; background: #12293d; border-radius: 999px; overflow: hidden; }
   .xpfill { height: 100%; background: #3ea672; border-radius: 999px; }
-  .trophies { display: flex; gap: 0.4rem; align-items: center; min-height: 1.5rem; margin-bottom: 0.4rem; }
+  .next-trophy { font-size: 1.25rem; opacity: 0.55; } /* the trophy you're working toward */
+  .trophies { display: flex; gap: 0.4rem; align-items: center; min-height: 1.5rem; margin-bottom: 0.2rem; }
   .trophy { font-size: 1.2rem; }
-  .trophy-empty { font-size: 0.8rem; opacity: 0.5; }
   .clue { font-size: 1.25rem; font-weight: 600; margin: 0.8rem 0 0.2rem; }
   .flag-emoji { font-size: 5rem; line-height: 1; text-align: center; margin: 0.4rem 0;
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: default; }
@@ -467,6 +512,9 @@
   .progress { opacity: 0.7; margin: 0 0 0.6rem; }
   canvas { width: 100%; height: auto; border-radius: 10px; touch-action: none; display: block; }
   .hint { opacity: 0.55; font-size: 0.85rem; margin: 0.4rem 0 0; text-align: center; }
+  .names-toggle { display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    font-size: 0.85rem; opacity: 0.8; margin-top: 0.6rem; cursor: pointer; }
+  .names-toggle input { width: auto; }
   .timer-wrap { display: flex; justify-content: center; margin-bottom: 0.4rem; }
   .timer-ring { transform: rotate(-90deg); } /* start depleting from 12 o'clock */
   .timer-ring .track { fill: none; stroke: #12293d; stroke-width: 6; }
@@ -490,5 +538,7 @@
   .result { font-size: 1.1rem; margin-top: 0.8rem; }
   .result.good { color: #3ea672; }
   .card { text-align: center; }
+  .bonus-line { font-size: 1.05rem; font-weight: 600; margin: 0.2rem 0 0.6rem; }
+  .bonus-line.good { color: #3ea672; }
   .share { display: inline-block; text-align: left; background: #12293d; padding: 1rem; border-radius: 10px; }
 </style>

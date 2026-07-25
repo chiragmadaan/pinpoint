@@ -26,8 +26,13 @@ export function startSession(puzzle: DailyPuzzle): Session {
   return { puzzle, index: 0, selected: null, results: [], phase: "question" };
 }
 
+/** Index 3 is the bonus question (unlocked only after acing the mandatory 3). */
+export const isBonusQuestion = (s: Session): boolean => s.index === 3;
+
 export function currentQuestion(s: Session): Question | null {
-  return s.phase === "done" ? null : (s.puzzle.questions[s.index] ?? null);
+  if (s.phase === "done") return null;
+  if (s.index < 3) return s.puzzle.questions[s.index] ?? null;
+  return s.puzzle.bonus ?? null; // index 3 -> bonus
 }
 
 /** Two-tap flow, step 1: select (or re-select) a country. Ignored unless we're taking a guess. */
@@ -43,7 +48,7 @@ export function submitGuess(
   cfg: ScoreConfig = DEFAULT_SCORE_CONFIG,
 ): Session {
   if (s.phase !== "question" || s.selected == null) return s;
-  const q = s.puzzle.questions[s.index]!;
+  const q = currentQuestion(s)!;
   const result = scoreGuess(q, s.selected, adjacency, cfg);
   return { ...s, results: [...s.results, result], phase: "revealed" };
 }
@@ -55,17 +60,25 @@ export function submitGuess(
 export function timeUp(s: Session, adjacency: Adjacency = {}, cfg: ScoreConfig = DEFAULT_SCORE_CONFIG): Session {
   if (s.phase !== "question") return s;
   if (s.selected != null) return submitGuess(s, adjacency, cfg);
-  const q = s.puzzle.questions[s.index]!;
+  const q = currentQuestion(s)!;
   const result: GuessResult = { verdict: "wrong", points: 0, guessIso: "", correctIso: q.answerIso };
   return { ...s, results: [...s.results, result], phase: "revealed" };
 }
 
-/** After the reveal, advance to the next question or finish the day. */
+/** Did the player get all three mandatory questions correct? (Gates the bonus.) */
+export const acedMain = (s: Session): boolean =>
+  s.results.length >= 3 && s.results.slice(0, 3).every((r) => r.verdict === "correct");
+
+/** After the reveal, advance to the next question, unlock the bonus, or finish the day. */
 export function advance(s: Session): Session {
   if (s.phase !== "revealed") return s;
-  const nextIndex = s.index + 1;
-  if (nextIndex >= s.puzzle.questions.length) return { ...s, phase: "done", selected: null };
-  return { ...s, index: nextIndex, selected: null, phase: "question" };
+  if (s.index < 2) return { ...s, index: s.index + 1, selected: null, phase: "question" };
+  if (s.index === 2) {
+    // Just revealed Q3: unlock the bonus only if all 3 were correct and a bonus exists.
+    if (acedMain(s) && s.puzzle.bonus) return { ...s, index: 3, selected: null, phase: "question" };
+    return { ...s, phase: "done", selected: null };
+  }
+  return { ...s, phase: "done", selected: null }; // after the bonus
 }
 
 export const sessionVerdicts = (s: Session): Verdict[] => s.results.map((r) => r.verdict);

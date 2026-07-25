@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   advance,
   currentQuestion,
+  isBonusQuestion,
   isComplete,
   selectCountry,
   sessionVerdicts,
@@ -41,6 +42,28 @@ test("full 3-question session: phases, staggered xp, verdicts", () => {
   assert.ok(isComplete(s));
   assert.deepEqual(sessionVerdicts(s), ["correct", "wrong", "correct"]);
   assert.equal(sessionXp(s), 200 + 0 + 600);
+});
+
+test("bonus unlocks only after acing all 3 mandatory questions", () => {
+  const bonus = { id: "b", clueType: "tld" as const, difficulty: "hard" as const, prompt: "bonus", answerIso: "NZL", acceptedIso: ["NZL"] };
+  const withBonus = { ...puzzle, bonus };
+
+  let s = startSession(withBonus);
+  s = advance(submitGuess(selectCountry(s, "FRA"), adjacency)); // Q1 correct
+  s = advance(submitGuess(selectCountry(s, "JPN"), adjacency)); // Q2 correct
+  s = submitGuess(selectCountry(s, "BHS"), adjacency); // Q3 correct
+  s = advance(s);
+  assert.ok(isBonusQuestion(s));
+  assert.equal(currentQuestion(s)?.id, "b");
+  s = advance(submitGuess(selectCountry(s, "NZL"), adjacency));
+  assert.ok(isComplete(s));
+
+  let s2 = startSession(withBonus);
+  s2 = advance(submitGuess(selectCountry(s2, "CHN"), adjacency)); // Q1 wrong
+  s2 = advance(submitGuess(selectCountry(s2, "JPN"), adjacency));
+  s2 = advance(submitGuess(selectCountry(s2, "BHS"), adjacency)); // Q3 revealed -> advance
+  assert.ok(isComplete(s2));
+  assert.ok(!isBonusQuestion(s2));
 });
 
 test("timeUp records a miss when nothing selected, else submits the selection", () => {

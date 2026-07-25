@@ -108,7 +108,14 @@ Nearly every clue type maps to structured, verifiable facts in **Wikidata**, so 
 
 **Welcome screen:** the app opens on a Play screen (not straight into Q1); customizable later for logo/splash.
 
-**Current output:** ~1,715 candidate questions (incl. 359 world-famous birthplaces after the ≥150-sitelink floor) → **213-day** calendar. Fewer days than the raw pool allows because genuinely-*easy* questions are scarce (only locate/flag/capital/famous-landmark/dish can be easy) — quality over filler. Regenerate with `pnpm content:gen`.
+### Bonus 4th question + difficulty response (playtest fixes)
+Playtesters found the game too hard (most only got Finland; nobody knew Kenya's flag or Congo's dialing code). Two responses:
+- **Obscure, near-unanswerable types** (calling code, TLD, highest point, currency) are **removed from the mandatory 3** and become a **bonus 4th question**, unlocked only after acing 3/3 (proven enthusiasts), worth **2× XP**. `isBonusQuestion`/`acedMain` in core; `BONUS_TYPES` split in content-gen; `bonus?` on `DailyPuzzle`.
+- **Country-names aid**: a toggle that labels the map (`setLabels` in `packages/map`, labels drawn only where a country is big enough on screen) but scores **½ points** (`ScoreConfig.multiplier`). Opt-in easy mode that prices itself, so competitive players leave it off. *(A global all-names toggle was chosen over the earlier objection because half-points prices the trade.)*
+
+**Current output:** ~1,715 candidates (mandatory + bonus split) → **~191-day** calendar (each day has a bonus). Regenerate with `pnpm content:gen`.
+
+> Open question the playtest raised but this doesn't fully resolve: even the *mandatory* "hard" (e.g. a flag of a lesser-known country) is hard for a mass audience. Moving dialing codes to the bonus helps; whether the mandatory hard tier is now acceptable needs another playtest.
 
 ### Flags = SVG images (was emoji)
 Flag questions render a **bundled SVG** (`apps/web/public/flags/<cc>.svg`, from lipis/flag-icons, MIT; flags are public domain), with a generic `alt="Flag"` and unselectable. **Why not emoji:** confirmed in the wild that Windows browsers render a flag emoji as its raw 2-letter code (e.g. "KE") — both broken *and* an answer leak. The stored emoji is decoded back to its alpha-2 code at render time to pick the SVG (so no content regeneration was needed); the emoji remains only as a fallback. Cost: ~2.7 MB of tiny SVGs in the deploy, each fetched only when its flag question appears.
@@ -270,6 +277,6 @@ current focus. This also de-risks the *not-guaranteed* Playables acceptance (§1
 - **Map engine:** dependency-free equirectangular + Canvas + custom hit-testing (no d3, no tiles); zoom/pan added.
 - **Build order:** web-first; Playable deferred.
 - **XP:** staggered by difficulty (200/400/600), no speed bonus, no per-answer popup.
-- **Progression:** numeric infinite levels (XP bar; start at Level 1; clear(L) = 1000 + (L-1)*500) + collectible **trophies** unlocked at level milestones.
+- **Progression:** **trophies only in the UI** (shelf + a bar filling toward the next trophy). Numeric levels are **internal-only** — they still exist (clear(L) = 1000 + (L-1)*500) to trigger trophy thresholds, but are hidden, because a per-player "Level" that doesn't change the (universal) daily content is incoherent. Decided after playtest feedback.
 - **Guess button:** always reads "Guess" (country name never shown).
 - **Map data:** real country GeoJSON keyed by ISO alpha-3 (`apps/web/public/countries.geo.json`).

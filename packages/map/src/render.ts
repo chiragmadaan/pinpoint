@@ -1,3 +1,4 @@
+import { centroid, geometryBounds } from "./geometry.ts";
 import type { Geometry, Iso3, MapFeature, Projection } from "./types.ts";
 
 export interface MapStyle {
@@ -23,6 +24,8 @@ export interface RenderState {
   /** Set during answer reveal. */
   correct?: Iso3 | null;
   guess?: Iso3 | null;
+  /** Draw country-name labels (the "names" aid). */
+  labels?: boolean;
 }
 
 function tracePath(ctx: CanvasRenderingContext2D, geom: Geometry, projection: Projection): void {
@@ -66,5 +69,29 @@ export function drawMap(
     ctx.fillStyle = fillFor(f.iso, state, style);
     ctx.fill("evenodd");
     ctx.stroke();
+  }
+
+  if (state.labels) drawLabels(ctx, features, projection);
+}
+
+/** Country-name labels — only where the country is big enough on screen to be legible (skip specks;
+ * they appear as you zoom in). Stroked for contrast against land/ocean. */
+function drawLabels(ctx: CanvasRenderingContext2D, features: MapFeature[], projection: Projection): void {
+  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = 3;
+  ctx.lineJoin = "round";
+  for (const f of features) {
+    if (!f.name) continue;
+    const [minLon, minLat, maxLon, maxLat] = geometryBounds(f.geometry);
+    const [x0] = projection.forward([minLon, maxLat]);
+    const [x1] = projection.forward([maxLon, minLat]);
+    if (x1 - x0 < 34) continue; // too small at this zoom
+    const [cx, cy] = projection.forward(centroid(f.geometry));
+    ctx.strokeStyle = "rgba(11,30,51,0.9)";
+    ctx.strokeText(f.name, cx, cy);
+    ctx.fillStyle = "#eaf2f8";
+    ctx.fillText(f.name, cx, cy);
   }
 }

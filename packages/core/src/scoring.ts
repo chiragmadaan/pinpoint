@@ -13,10 +13,13 @@ export const DIFFICULTY_XP: Record<Difficulty, number> = {
 export interface ScoreConfig {
   /** Fraction of the difficulty XP awarded for guessing a bordering country. Default 0 (no credit). */
   neighborFraction: number;
+  /** Points multiplier — e.g. 2 for the bonus question, 0.5 with the country-names aid on. */
+  multiplier: number;
 }
 
 export const DEFAULT_SCORE_CONFIG: ScoreConfig = {
   neighborFraction: 0, // a neighbor is acknowledged ("Close — a neighbor!") but earns 0 points
+  multiplier: 1,
 };
 
 /**
@@ -31,11 +34,11 @@ export function scoreGuess(
   adjacency: Adjacency,
   cfg: ScoreConfig = DEFAULT_SCORE_CONFIG,
 ): GuessResult {
-  const full = DIFFICULTY_XP[question.difficulty];
+  const full = DIFFICULTY_XP[question.difficulty] * cfg.multiplier;
   const base = { guessIso, correctIso: question.answerIso };
 
   if (question.acceptedIso.includes(guessIso)) {
-    return { ...base, verdict: "correct", points: full };
+    return { ...base, verdict: "correct", points: Math.round(full) };
   }
 
   const neighbors = adjacency[question.answerIso] ?? [];

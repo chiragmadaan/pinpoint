@@ -61,11 +61,13 @@ export interface Question {
   asOf?: string;
 }
 
-/** One day's puzzle: exactly three questions in an easy -> medium -> hard arc. */
+/** One day's puzzle: three questions in an easy -> medium -> hard arc, plus an optional bonus. */
 export interface DailyPuzzle {
-  /** UTC calendar day, "YYYY-MM-DD". Defines the shared global daily. */
+  /** Local calendar day, "YYYY-MM-DD". Defines the shared global daily. */
   date: string;
   questions: [Question, Question, Question];
+  /** 4th "bonus" question (obscure/hard), unlocked only when all 3 are answered correctly. */
+  bonus?: Question;
 }
 
 /** The pre-generated static calendar shipped as data/questions.json. */

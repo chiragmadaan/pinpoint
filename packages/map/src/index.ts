@@ -34,6 +34,8 @@ export interface WorldMap {
   reveal(guessIso: Iso3, correctIso: Iso3): void;
   /** Zoom by a factor around the map centre (for ＋/－ buttons). >1 zooms in, <1 zooms out. */
   zoomBy(factor: number): void;
+  /** Toggle country-name labels (the "names" aid). */
+  setLabels(enabled: boolean): void;
   /** Clear selection + reveal state AND reset the zoom/pan to the full world view. */
   reset(): void;
   destroy(): void;
@@ -53,6 +55,7 @@ export function createWorldMap(opts: WorldMapOptions): WorldMap {
   let ty = 0;
   let state: RenderState = {};
   let selectable = true; // taps select only during the question phase, not during the reveal
+  let showLabels = false; // country-name labels (the "names" aid)
 
   const proj: Projection = {
     forward(ll) {
@@ -72,7 +75,7 @@ export function createWorldMap(opts: WorldMapOptions): WorldMap {
 
   const render = () => {
     const ctx = canvas.getContext("2d");
-    if (ctx) drawMap(ctx, features, proj, state, style);
+    if (ctx) drawMap(ctx, features, proj, { ...state, labels: showLabels }, style);
   };
 
   const toCanvas = (e: { clientX: number; clientY: number }): [number, number] => {
@@ -236,6 +239,10 @@ export function createWorldMap(opts: WorldMapOptions): WorldMap {
     },
     zoomBy(factor) {
       zoomAround(canvas.width / 2, canvas.height / 2, factor);
+    },
+    setLabels(enabled) {
+      showLabels = enabled;
+      render();
     },
     reveal(guessIso, correctIso) {
       selectable = false; // no country selection while the answer is shown

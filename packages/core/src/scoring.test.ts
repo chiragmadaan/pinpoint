@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DIFFICULTY_XP, scoreGuess, scoreMultiSelect } from "./scoring.ts";
 import { recordCompletedDay, emptyPlayerState } from "./daily.ts";
-import { latestTrophy, levelForXp, trophiesEarned, trophiesUnlockedBetween, xpToClearLevel } from "./levels.ts";
+import { latestTrophy, levelForXp, trophiesEarned, trophiesUnlockedBetween, trophyProgress, xpToClearLevel, xpToReachLevel } from "./levels.ts";
 import type { Question } from "./types.ts";
 
 const q: Question = {
@@ -84,4 +84,14 @@ test("trophies unlock at level thresholds and accumulate", () => {
   assert.equal(latestTrophy(50)?.name, "Legend");
   assert.equal(trophiesEarned(1).length, 1); // just Noob
   assert.deepEqual(trophiesUnlockedBetween(1, 5).map((t) => t.name), ["Wanderer", "Explorer"]);
+});
+
+test("trophyProgress fills from the last earned trophy toward the next", () => {
+  const p0 = trophyProgress(0); // level 1, has Noob (L1), next Wanderer (L3)
+  assert.equal(p0.earned.at(-1)?.name, "Noob");
+  assert.equal(p0.next?.name, "Wanderer");
+  assert.ok(p0.progress >= 0 && p0.progress < 1);
+  // Exactly at the XP needed to reach Wanderer's level => progress 1 toward Wanderer (about to unlock)
+  const atWanderer = xpToReachLevel(3);
+  assert.ok(trophyProgress(atWanderer - 1).progress > 0.9);
 });

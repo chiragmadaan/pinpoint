@@ -267,11 +267,14 @@ export function assembleCalendar(
   maxDays = 400,
   windowDays = 45,
   typeCap = 0.28, // no clue type may exceed this share of all questions (prevents birthplace flooding)
+  bonusPool: Question[] = [], // obscure "bonus" questions, one attached per day (unlocked on 3/3)
 ): PuzzleCalendar {
   const byDiff: Record<Difficulty, Question[]> = { easy: [], medium: [], hard: [] };
   for (const q of pool) byDiff[q.difficulty].push(q);
   const rng = mulberry32(42);
   for (const d of ["easy", "medium", "hard"] as const) shuffle(byDiff[d], rng);
+  const bonuses = [...bonusPool];
+  shuffle(bonuses, rng);
 
   const usedQ = new Set<string>();
   const recent: { iso: string; day: number }[] = []; // country recency
@@ -311,7 +314,14 @@ export function assembleCalendar(
       recent.push({ iso: q.answerIso, day });
     }
     if (picks.length < 3) break; // a tier ran dry
-    puzzles.push({ date: fmtKey(dt), questions: [picks[0]!, picks[1]!, picks[2]!] });
+    // Attach a bonus question: unused, and a different country from the day's three.
+    const bonus = bonuses.find((b) => !usedQ.has(b.id) && !banIso.has(b.answerIso));
+    const day3: DailyPuzzle = { date: fmtKey(dt), questions: [picks[0]!, picks[1]!, picks[2]!] };
+    if (bonus) {
+      usedQ.add(bonus.id);
+      day3.bonus = bonus;
+    }
+    puzzles.push(day3);
     dt = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1);
   }
   return { version: 1, puzzles };

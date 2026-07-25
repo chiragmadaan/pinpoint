@@ -11,6 +11,8 @@ export interface ShareOptions {
   level?: number;
   /** Optional trophy line, e.g. "🗺️ Explorer". */
   trophy?: string;
+  /** Bonus outcome: "solved" -> ⭐, "missed" -> ✩ (unlocked but wrong), undefined -> not unlocked. */
+  bonus?: "solved" | "missed";
 }
 
 /**
@@ -24,7 +26,8 @@ export function buildShareText(
   url: string,
   opts: ShareOptions = {},
 ): string {
-  const grid = verdicts.map((v) => EMOJI[v]).join("");
+  const bonusMark = opts.bonus === "solved" ? " ⭐" : opts.bonus === "missed" ? " ✩" : "";
+  const grid = verdicts.map((v) => EMOJI[v]).join("") + bonusMark;
   const solved = verdicts.filter((v) => v === "correct").length;
   const lines = [`📍 Pinpoint ${dateKey}`, `${grid}  ${solved}/3   🔥${streak}`];
   const badge = [opts.trophy, opts.level ? `Lv ${opts.level}` : null].filter(Boolean).join("  ·  ");
