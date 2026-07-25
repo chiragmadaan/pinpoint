@@ -110,8 +110,8 @@ Nearly every clue type maps to structured, verifiable facts in **Wikidata**, so 
 
 **Current output:** ~1,715 candidate questions (incl. 359 world-famous birthplaces after the ≥150-sitelink floor) → **213-day** calendar. Fewer days than the raw pool allows because genuinely-*easy* questions are scarce (only locate/flag/capital/famous-landmark/dish can be easy) — quality over filler. Regenerate with `pnpm content:gen`.
 
-### Flags = emoji (not images)
-Flag questions render the country's **flag emoji** (🇫🇷), derived from its alpha-2 code — no image assets or licensing. The clue emoji is rendered **unselectable** (no copy/drag/right-click) because the emoji's characters encode the alpha-2 code and would otherwise leak the answer. **Caveat:** Windows Chrome renders flag emoji as the 2-letter code rather than a flag — fine for the mobile-first audience, but swap to SVGs if desktop-web becomes important.
+### Flags = SVG images (was emoji)
+Flag questions render a **bundled SVG** (`apps/web/public/flags/<cc>.svg`, from lipis/flag-icons, MIT; flags are public domain), with a generic `alt="Flag"` and unselectable. **Why not emoji:** confirmed in the wild that Windows browsers render a flag emoji as its raw 2-letter code (e.g. "KE") — both broken *and* an answer leak. The stored emoji is decoded back to its alpha-2 code at render time to pick the SVG (so no content regeneration was needed); the emoji remains only as a fallback. Cost: ~2.7 MB of tiny SVGs in the deploy, each fetched only when its flag question appears.
 
 ### Licensing guardrails
 - Flags = public domain, safe.

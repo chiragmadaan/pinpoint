@@ -43,6 +43,17 @@
   // Dev tools show under `pnpm dev`, OR in a build made with VITE_DEV_TOOLS=1 (the hosted /dev/ variant).
   const DEV = import.meta.env.DEV || import.meta.env.VITE_DEV_TOOLS === "1";
   const EMOJI: Record<Verdict, string> = { correct: "🟩", neighbor: "🟨", wrong: "⬛" };
+  const base = import.meta.env.BASE_URL;
+
+  // Flag emojis render as raw "KE" letters on Windows (broken + leaks the answer), so we render an
+  // SVG instead. The stored emoji is two regional-indicator chars -> decode back to the alpha-2 code.
+  function flagCode(emoji: string): string | null {
+    const cps = [...emoji].map((c) => c.codePointAt(0) ?? 0);
+    if (cps.length === 2 && cps.every((cp) => cp >= 0x1f1e6 && cp <= 0x1f1ff)) {
+      return cps.map((cp) => String.fromCharCode(cp - 0x1f1e6 + 97)).join("");
+    }
+    return null;
+  }
 
   let canvas: HTMLCanvasElement;
   let map: WorldMap | null = null;
@@ -367,15 +378,18 @@
     {/if}
     <p class="clue">{q.prompt}</p>
     {#if q.emoji}
-      <div
-        class="flag-emoji"
-        role="img"
-        aria-label="flag"
-        on:contextmenu|preventDefault
-        on:dragstart|preventDefault
-      >
-        {q.emoji}
-      </div>
+      {@const cc = flagCode(q.emoji)}
+      {#if cc}
+        <img
+          class="flag-img"
+          src="{base}flags/{cc}.svg"
+          alt="Flag"
+          draggable="false"
+          on:contextmenu|preventDefault
+        />
+      {:else}
+        <div class="flag-emoji" role="img" aria-label="flag" on:contextmenu|preventDefault>{q.emoji}</div>
+      {/if}
     {/if}
     <p class="progress">Question {(session?.index ?? 0) + 1} / 3 · {q.difficulty}</p>
     <div class="map-wrap">
@@ -447,6 +461,9 @@
   .clue { font-size: 1.25rem; font-weight: 600; margin: 0.8rem 0 0.2rem; }
   .flag-emoji { font-size: 5rem; line-height: 1; text-align: center; margin: 0.4rem 0;
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: default; }
+  .flag-img { display: block; width: 200px; max-width: 60%; height: auto; margin: 0.5rem auto;
+    border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   .progress { opacity: 0.7; margin: 0 0 0.6rem; }
   canvas { width: 100%; height: auto; border-radius: 10px; touch-action: none; display: block; }
   .hint { opacity: 0.55; font-size: 0.85rem; margin: 0.4rem 0 0; text-align: center; }
