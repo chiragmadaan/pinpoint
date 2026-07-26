@@ -42,7 +42,7 @@ async function fetchText(url: string): Promise<string> {
 }
 
 /** Fetch + parse with retry/back-off. WDQS throttles bursts with 429/HTML pages and empty bodies. */
-async function fetchJson(url: string): Promise<unknown> {
+export async function fetchJson(url: string): Promise<unknown> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < 5; attempt++) {
     if (attempt > 0) await sleep(1500 * attempt); // linear back-off: 1.5s, 3s, 4.5s, 6s

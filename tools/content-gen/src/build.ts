@@ -17,8 +17,10 @@ export interface ValueRow {
 }
 
 /** A question before difficulty is assigned. `hardness` (0=easy..1=hard) overrides the default
- * obscurity+clue-weight scoring when set — used by fame-ranked person questions. */
-export type Candidate = Omit<Question, "difficulty"> & { hardness?: number };
+ * obscurity+clue-weight scoring when set. `sitelinks` gates the easy tier for person questions
+ * (pageviews overrate athletes; sitelinks = encyclopedic-household-name check). Both are transient
+ * (stripped before the question ships). */
+export type Candidate = Omit<Question, "difficulty"> & { hardness?: number; sitelinks?: number };
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
@@ -66,6 +68,15 @@ export function flagEmoji(alpha2: string | undefined): string | undefined {
   const cc = alpha2.toUpperCase();
   if (!/^[A-Z]{2}$/.test(cc)) return undefined;
   return String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+}
+
+/**
+ * Recognizability from Wikipedia pageviews, log-normalized to [0,1] between a floor and ceiling.
+ * Pageviews span orders of magnitude (20K–18M), so we use log10. 0 = at/below floor, 1 = at/above ceil.
+ */
+export function pvFame(views: number, floor: number, ceil: number): number {
+  const lp = Math.log10(Math.max(1, views));
+  return Math.min(1, Math.max(0, (lp - Math.log10(floor)) / (Math.log10(ceil) - Math.log10(floor))));
 }
 
 /** Fame ranking -> obscurity in [0,1]; 0 = most famous (most sitelinks), 1 = most obscure. */
@@ -141,6 +152,27 @@ export function buildUniqueValue(
   return out;
 }
 
+/**
+ * Globally recognizable countries — the ONLY ones allowed in the "easy" slot for country-attribute
+ * clues (locate/flag/capital). No auto metric identifies these (sitelinks/pageviews are compressed;
+ * population makes populous-but-obscure nations look easy), so this is a curated list. Edit freely.
+ */
+export const EASY_COUNTRIES = new Set<string>([
+  "USA", "CAN", "MEX", "BRA", "ARG", "GBR", "IRL", "FRA", "DEU", "ITA", "ESP", "PRT", "NLD", "BEL",
+  "CHE", "AUT", "SWE", "NOR", "DNK", "FIN", "POL", "GRC", "RUS", "UKR", "TUR", "EGY", "ZAF", "NGA",
+  "KEN", "MAR", "SAU", "ARE", "ISR", "IRN", "IND", "PAK", "CHN", "JPN", "KOR", "THA", "VNM", "IDN",
+  "PHL", "AUS", "NZL",
+]);
+
+/** Clue types whose "easy" tier is gated by EASY_COUNTRIES (must resolve to a recognizable country).
+ * Includes "nationality" ("which country is X from?") — famous person, but the answer country must
+ * still be recognizable to be easy. */
+const COUNTRY_ATTR = new Set(["locate", "flag", "capital", "nationality"]);
+
+/** A person question is "easy" only if the person is this encyclopedically documented. Pageviews
+ * overrate athletes (fan traffic); sitelinks track household-name status (icons ~280+). */
+const EASY_PERSON_SITELINKS = 120;
+
 const CLUE_WEIGHT: Record<string, number> = {
   locate: 0,
   flag: 0.15,
@@ -159,7 +191,8 @@ const CLUE_WEIGHT: Record<string, number> = {
 export interface PersonEntry {
   iso: string;
   person: string;
-  sitelinks: number;
+  views: number; // annual en.wikipedia pageviews (recognizability + difficulty)
+  sitelinks?: number; // Wikipedia language count — gates the easy tier (athletes score low here)
 }
 
 export function buildPeopleQuestions(
@@ -167,17 +200,19 @@ export function buildPeopleQuestions(
   clueType: ClueType,
   prompt: (person: string) => string,
   nameOf?: (iso: string) => string,
-  fameRange: { floor: number; ceil: number } = { floor: 0, ceil: 150 },
+  floor = 150_000, // below this many annual pageviews -> too obscure, dropped
+  ceil = 5_000_000, // at/above this -> maximally famous (easy)
 ): Candidate[] {
   // Reject a name shared by people from different countries (ambiguous answer).
   const isosByName = new Map<string, Set<string>>();
-  const best = new Map<string, PersonEntry>(); // keep the most-famous entry per name
+  const best = new Map<string, PersonEntry>(); // keep the most-recognized entry per name
   for (const e of entries) {
+    if (e.views < floor) continue; // not recognizable enough for a fair question
     let set = isosByName.get(e.person);
     if (!set) isosByName.set(e.person, (set = new Set()));
     set.add(e.iso);
     const b = best.get(e.person);
-    if (!b || e.sitelinks > b.sitelinks) best.set(e.person, e);
+    if (!b || e.views > b.views) best.set(e.person, e);
   }
 
   const out: Candidate[] = [];
@@ -186,9 +221,7 @@ export function buildPeopleQuestions(
     if (/^Q\d+$/.test(person)) continue; // no English label available
     const e = best.get(person)!;
     if (nameOf && leaksCountryName(person, nameOf(e.iso))) continue;
-    // Map sitelinks -> fame in [0,1] over the given range (people use a high floor so only true
-    // household names read as "easy"; landmarks/dishes use the default lower range).
-    const fame = Math.min(1, Math.max(0, (e.sitelinks - fameRange.floor) / (fameRange.ceil - fameRange.floor)));
+    const fame = pvFame(e.views, floor, ceil); // recognizability from pageviews
     out.push({
       id: `${clueType}-${slug(person)}-${e.iso}`,
       clueType,
@@ -197,6 +230,7 @@ export function buildPeopleQuestions(
       acceptedIso: [e.iso],
       source: `wikidata:${clueType}`,
       hardness: Math.max(0.1, 1 - fame * 0.85), // famous -> easy, obscure -> hard
+      sitelinks: e.sitelinks, // carried for the easy-tier gate
     });
   }
   return out;
@@ -226,7 +260,17 @@ export function assignDifficulty(cands: Candidate[], obscurity: Record<string, n
     // Birthplace is inherently ≥2 failure points (know the person AND derive their birth country,
     // which is often a gotcha), so it can never be "easy" — floor at medium.
     if (s.c.clueType === "birthplace" && difficulty === "easy") difficulty = "medium";
-    const { hardness: _drop, ...rest } = s.c;
+    // "Easy" locate/flag/capital only for genuinely recognizable countries (curated) — no metric
+    // reliably identifies these, so a populous-but-obscure country must not slip into easy.
+    if (COUNTRY_ATTR.has(s.c.clueType) && difficulty === "easy" && !EASY_COUNTRIES.has(s.c.answerIso)) {
+      difficulty = "medium";
+    }
+    // Person questions can be "easy" only for encyclopedically-documented people (not high-traffic
+    // athletes). Birthplace is already never-easy; this gates nationality's easy tier.
+    if (s.c.clueType === "nationality" && difficulty === "easy" && (s.c.sitelinks ?? 0) < EASY_PERSON_SITELINKS) {
+      difficulty = "medium";
+    }
+    const { hardness: _drop, sitelinks: _sl, ...rest } = s.c;
     return { ...rest, difficulty };
   });
 }

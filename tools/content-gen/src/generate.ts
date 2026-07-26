@@ -13,11 +13,12 @@ import {
   buildLocate,
   buildPeopleQuestions,
   buildUniqueValue,
-  computeObscurity,
   isSensitiveText,
+  pvFame,
   type CountryMeta,
   type PersonEntry,
 } from "./build.ts";
+import { pageviews } from "./pageviews.ts";
 import { sparql } from "./wikidata.ts";
 
 const url = (p: string) => new URL(p, import.meta.url);
@@ -46,15 +47,26 @@ SELECT ?iso ?iso2 ?countryLabel ?sl ?pop ?country WHERE {
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
 
-// World-famous only. Household names sit at ~220–340 Wikipedia language editions (Einstein 320,
-// Messi 223); "notable but not famous" people (e.g. Golda Meir, 134) sit lower — so a high floor.
-const FAME_MIN = 150;
-const PER_COUNTRY = 50;
+// Sitelinks is now only a cheap PRE-FILTER to bound the candidate set per country; PAGEVIEWS decide
+// actual recognizability downstream. So keep this low (a light "has some documentation" bar) and let
+// pageviews cut — a high sitelinks bar was zeroing out ~160 countries and excluding pageview-famous
+// but less-encyclopedic people.
+const FAME_MIN = 30;
+const PER_COUNTRY = 40;
 // Birth-only, bounded per country — the fast pattern (a births+deaths UNION timed out).
 const peopleQuery = (qid: string) => `
 SELECT ?personLabel ?sl WHERE {
   ?person wdt:P31 wd:Q5; wdt:P19 ?pl. ?pl wdt:P17 wd:${qid}.
   ?person wikibase:sitelinks ?sl. FILTER(?sl >= ${FAME_MIN})
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+} ORDER BY DESC(?sl) LIMIT ${PER_COUNTRY}`;
+
+// "Which country is X from?" — people whose SINGLE citizenship is this country (multi-citizenship is
+// ambiguous, so it's excluded). The easy, no-gotcha association (Gandhi→India, Mandela→South Africa).
+const nationalityQuery = (qid: string) => `
+SELECT ?personLabel ?sl WHERE {
+  ?person wdt:P31 wd:Q5; wdt:P27 wd:${qid}; wikibase:sitelinks ?sl. FILTER(?sl >= ${FAME_MIN})
+  FILTER NOT EXISTS { ?person wdt:P27 ?other. FILTER(?other != wd:${qid}) }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } ORDER BY DESC(?sl) LIMIT ${PER_COUNTRY}`;
 
@@ -162,8 +174,17 @@ async function main() {
     }
   }
   const countries = [...metaMap.values()];
-  const obscurity = computeObscurity(countries);
   const nameOf = (iso: string) => metaMap.get(iso)?.name ?? iso;
+
+  // Country recognizability from POPULATION (log-normalized). Country-article pageviews do NOT
+  // discriminate (Serbia 2.6M ≈ Uzbekistan 2.7M — topic curiosity, not flag/geo fame) and sitelinks
+  // are flatter still. Population has real spread (1.4B → ~10K) and tracks global prominence better.
+  // (Pageviews ARE used for entities below — people/landmarks/dishes — where the range makes them work.)
+  const pops = countries.map((c) => c.pop).filter((p): p is number => typeof p === "number" && p > 0);
+  const pFloor = Math.min(...pops);
+  const pCeil = Math.max(...pops);
+  const obscurity: Record<string, number> = {};
+  for (const c of countries) obscurity[c.iso] = 1 - pvFame(c.pop ?? pFloor, pFloor, pCeil);
 
   // Map each ISO to its Wikidata QID (for the per-country people queries).
   const qidByIso = new Map<string, string>();
@@ -181,14 +202,59 @@ async function main() {
   const perCountry = await mapPool(targets, 2, async ({ iso, qid }) => {
     try {
       const rows = await sparql(`people-${qid}`, peopleQuery(qid));
-      if (++progressed % 25 === 0) console.log(`  people: ${progressed}/${targets.length} countries`);
-      return rows.map((r) => ({ iso, person: r.personLabel!, sitelinks: Number(r.sl ?? 0) }));
+      if (++progressed % 40 === 0) console.log(`  people SPARQL: ${progressed}/${targets.length}`);
+      return rows.slice(0, PER_COUNTRY).map((r) => ({ iso, person: r.personLabel!, sitelinks: Number(r.sl ?? 0) })); // top-20 documented/country
     } catch (e) {
       console.warn(`  people ${iso} failed: ${(e as Error).message}`);
-      return [];
+      return [] as { iso: string; person: string; sitelinks: number }[];
     }
   });
-  const birthEntries: PersonEntry[] = perCountry.flat();
+  const peopleCandidates = perCountry.flat();
+  console.log(`Fetching pageviews for ${peopleCandidates.length} people...`);
+  let pvDone = 0;
+  const birthEntries: PersonEntry[] = await mapPool(peopleCandidates, 8, async (p) => {
+    if (++pvDone % 500 === 0) console.log(`  people pageviews: ${pvDone}/${peopleCandidates.length}`);
+    return { iso: p.iso, person: p.person, sitelinks: p.sitelinks, views: await pageviews(p.person) };
+  });
+
+  // Nationality ("which country is X from?") — single-citizenship people, per-country, then pageviews.
+  progressed = 0;
+  const perCountryNat = await mapPool(targets, 2, async ({ iso, qid }) => {
+    try {
+      const rows = await sparql(`nationality-${qid}`, nationalityQuery(qid));
+      if (++progressed % 40 === 0) console.log(`  nationality SPARQL: ${progressed}/${targets.length}`);
+      return rows.slice(0, PER_COUNTRY).map((r) => ({ iso, person: r.personLabel!, sitelinks: Number(r.sl ?? 0) }));
+    } catch (e) {
+      console.warn(`  nationality ${iso} failed: ${(e as Error).message}`);
+      return [] as { iso: string; person: string; sitelinks: number }[];
+    }
+  });
+  const natCandidates = perCountryNat.flat();
+  console.log(`Fetching pageviews for ${natCandidates.length} nationality people...`);
+  const natEntries: PersonEntry[] = await mapPool(natCandidates, 8, async (p) => ({
+    iso: p.iso,
+    person: p.person,
+    sitelinks: p.sitelinks,
+    views: await pageviews(p.person),
+  }));
+
+  console.log(`Fetching pageviews for ${whsRows.length} landmarks, ${dishRows.length} dishes...`);
+  const landmarkEntries: PersonEntry[] = await mapPool(whsRows, 8, async (r) => ({
+    iso: r.iso!,
+    person: r.siteLabel!,
+    views: await pageviews(r.siteLabel!),
+  }));
+  const dishEntries: PersonEntry[] = await mapPool(dishRows, 8, async (r) => ({
+    iso: r.iso!,
+    person: r.dishLabel!,
+    views: await pageviews(r.dishLabel!),
+  }));
+
+  // Diagnostics: how many entities survive the pageview floors.
+  const surv = (arr: PersonEntry[], floor: number) => `${arr.filter((e) => e.views >= floor).length}/${arr.length}`;
+  console.log(
+    `floor survival — people ${surv(birthEntries, 150_000)}, nationality ${surv(natEntries, 150_000)}, landmarks ${surv(landmarkEntries, 35_000)}, dishes ${surv(dishEntries, 35_000)}`,
+  );
 
   const auto = [
     ...buildLocate(countries),
@@ -238,20 +304,12 @@ async function main() {
       (v) => `${v} is the highest point of which country?`,
       nameOf,
     ),
-    ...buildPeopleQuestions(birthEntries, "birthplace", (n) => `In which country was ${n} born?`, nameOf),
-    // deathplace intentionally omitted — morbid framing; see design doc.
-    ...buildPeopleQuestions(
-      whsRows.map((r) => ({ iso: r.iso!, person: r.siteLabel!, sitelinks: Number(r.sl ?? 0) })),
-      "landmark",
-      (n) => `In which country is ${n}?`,
-      nameOf,
-    ),
-    ...buildPeopleQuestions(
-      dishRows.map((r) => ({ iso: r.iso!, person: r.dishLabel!, sitelinks: Number(r.sl ?? 0) })),
-      "dish",
-      (n) => `Which country did ${n} originate in?`,
-      nameOf,
-    ),
+    // Recognizability floors (annual pageviews): drop below, "easy" at the ceiling. deathplace omitted.
+    ...buildPeopleQuestions(birthEntries, "birthplace", (n) => `In which country was ${n} born?`, nameOf, 150_000, 3_000_000),
+    ...buildPeopleQuestions(natEntries, "nationality", (n) => `Which country is ${n} from?`, nameOf, 150_000, 3_000_000),
+    // Landmarks/dishes naturally get far fewer views than people -> much lower floor (35k).
+    ...buildPeopleQuestions(landmarkEntries, "landmark", (n) => `In which country is ${n}?`, nameOf, 35_000, 1_000_000),
+    ...buildPeopleQuestions(dishEntries, "dish", (n) => `Which country did ${n} originate in?`, nameOf, 35_000, 1_000_000),
   ];
 
   const autoQs = assignDifficulty(auto, obscurity);
@@ -263,6 +321,10 @@ async function main() {
   const BONUS_TYPES = new Set(["calling-code", "tld", "highest-point", "currency"]);
   const mandatory = all.filter((q) => !BONUS_TYPES.has(q.clueType));
   const bonusPool = all.filter((q) => BONUS_TYPES.has(q.clueType));
+
+  const mDiff = { easy: 0, medium: 0, hard: 0 };
+  for (const q of mandatory) mDiff[q.difficulty]++;
+  console.log("mandatory pool by difficulty:", mDiff, "(calendar length = smallest tier, minus no-repeat/type-cap losses)");
 
   const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 400, 45, 0.28, bonusPool);
 

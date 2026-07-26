@@ -74,10 +74,11 @@ test("assignDifficulty splits candidates into easy/medium/hard terciles", () => 
     { iso: "C", name: "C", sitelinks: 100 },
   ];
   const obscurity = computeObscurity(countries);
+  // Use "trivia" (not gated by EASY_COUNTRIES / locate / birthplace caps) to test the raw terciles.
   const cands = ["A", "B", "C"].map((iso) => ({
-    id: `capital-${iso}`,
-    clueType: "capital" as const,
-    prompt: `capital ${iso}`,
+    id: `trivia-${iso}`,
+    clueType: "trivia" as const,
+    prompt: `trivia ${iso}`,
     answerIso: iso,
     acceptedIso: [iso],
   }));

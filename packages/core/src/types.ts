@@ -17,6 +17,7 @@ export type ClueType =
   | "river-mouth" // "Country where the Ganga meets the ocean"
   | "birthplace" // "Country where <figure> was born"
   | "deathplace" // "Country where <figure> died"
+  | "nationality" // "Which country is <figure> from?" (single citizenship; the easy association)
   | "currency"
   | "language"
   | "landmark" // "In which country is <landmark>?"
