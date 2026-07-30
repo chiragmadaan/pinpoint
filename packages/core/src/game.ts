@@ -12,7 +12,7 @@ import type { DailyPuzzle, Difficulty, GuessResult, Iso3, Question, Verdict } fr
 export type Phase = "question" | "revealed" | "done";
 
 /** Seconds allowed per question, by difficulty — harder questions need more time to reason. */
-export const TIMER_SECONDS: Record<Difficulty, number> = { easy: 15, medium: 20, hard: 30 };
+export const TIMER_SECONDS: Record<Difficulty, number> = { easy: 20, medium: 25, hard: 30 };
 
 export interface Session {
   puzzle: DailyPuzzle;

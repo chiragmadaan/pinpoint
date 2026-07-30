@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pointInGeometry } from "./geometry.ts";
-import { resolveLonLat } from "./hittest.ts";
+import { equirectangular, pointInGeometry } from "./geometry.ts";
+import { resolveTap } from "./hittest.ts";
 import { topojsonToFeatures } from "./topojson.ts";
 
 // A tiny quantized topology: one square country "FRA" made of a single closed arc.
@@ -31,6 +31,8 @@ test("decodes a quantized TopoJSON polygon into a usable feature", () => {
   // The square spans lon 10..20, lat 40..50 — a point in the middle must be inside.
   assert.ok(pointInGeometry([15, 45], f.geometry));
   assert.ok(!pointInGeometry([0, 0], f.geometry));
-  // and hit-testing resolves it
-  assert.equal(resolveLonLat([15, 45], features, { snapKm: 0 }), "FRA");
+  // and hit-testing resolves it (via the projection, exact containment)
+  const proj = equirectangular({ width: 360, height: 180 });
+  const [px, py] = proj.forward([15, 45]);
+  assert.equal(resolveTap(px, py, proj, features), "FRA");
 });

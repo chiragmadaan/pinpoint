@@ -102,13 +102,14 @@ test("locate questions never rank hard (single point of failure -> capped at med
 });
 
 test("assembleCalendar: no reused questions, distinct countries per day", () => {
-  const mk = (id: string, iso: string, difficulty: Question["difficulty"]): Question => ({
-    id, clueType: "locate", difficulty, prompt: id, answerIso: iso, acceptedIso: [iso],
+  // Distinct category per tier so each day can form 3 distinct-category questions.
+  const mk = (id: string, iso: string, difficulty: Question["difficulty"], clueType: Question["clueType"]): Question => ({
+    id, clueType, difficulty, prompt: id, answerIso: iso, acceptedIso: [iso],
   });
   const pool: Question[] = [
-    mk("e1", "A", "easy"), mk("e2", "B", "easy"), mk("e3", "C", "easy"),
-    mk("m1", "D", "medium"), mk("m2", "E", "medium"), mk("m3", "F", "medium"),
-    mk("h1", "G", "hard"), mk("h2", "H", "hard"), mk("h3", "I", "hard"),
+    mk("e1", "A", "easy", "locate"), mk("e2", "B", "easy", "locate"), mk("e3", "C", "easy", "locate"),
+    mk("m1", "D", "medium", "capital"), mk("m2", "E", "medium", "capital"), mk("m3", "F", "medium", "capital"),
+    mk("h1", "G", "hard", "flag"), mk("h2", "H", "hard", "flag"), mk("h3", "I", "hard", "flag"),
   ];
   const cal = assembleCalendar(pool, "2026-08-01", 10, 45);
   assert.equal(cal.puzzles.length, 3); // 3 per tier -> 3 days
@@ -136,4 +137,41 @@ test("assembleCalendar gives each day 3 distinct clue types when the pool allows
   for (const p of cal.puzzles) {
     assert.equal(new Set(p.questions.map((q) => q.clueType)).size, 3); // no repeated clue type in a day
   }
+});
+
+test("assembleCalendar: at most one person question, and never three of any category, per day", () => {
+  const mk = (id: string, iso: string, difficulty: Question["difficulty"], clueType: Question["clueType"]): Question => ({
+    id, clueType, difficulty, prompt: id, answerIso: iso, acceptedIso: [iso],
+  });
+  const PERSON = new Set(["birthplace", "nationality", "deathplace"]);
+  const cat = (t: string) => (PERSON.has(t) ? "person" : t);
+  // Person clues in every tier (would pair up under the old rule); non-person alternatives too.
+  const pool: Question[] = [
+    mk("e1", "A", "easy", "birthplace"), mk("e2", "B", "easy", "nationality"), mk("e3", "C", "easy", "locate"),
+    mk("m1", "D", "medium", "nationality"), mk("m2", "E", "medium", "birthplace"), mk("m3", "F", "medium", "capital"),
+    mk("h1", "G", "hard", "birthplace"), mk("h2", "H", "hard", "nationality"), mk("h3", "I", "hard", "flag"),
+  ];
+  const cal = assembleCalendar(pool, "2026-08-01", 3, 45, 9);
+  for (const p of cal.puzzles) {
+    const counts: Record<string, number> = {};
+    for (const q of p.questions) counts[cat(q.clueType)] = (counts[cat(q.clueType)] ?? 0) + 1;
+    assert.ok((counts.person ?? 0) <= 1, `day ${p.date} has ${counts.person} person questions`);
+    assert.ok(Math.max(...Object.values(counts)) <= 2, `day ${p.date} repeats a category 3×: ${p.questions.map((q) => q.clueType).join(",")}`);
+  }
+});
+
+test("assembleCalendar allows two of a non-person category (e.g. easy + hard Locate) when needed", () => {
+  const mk = (id: string, iso: string, difficulty: Question["difficulty"], clueType: Question["clueType"]): Question => ({
+    id, clueType, difficulty, prompt: id, answerIso: iso, acceptedIso: [iso],
+  });
+  // Only locate is available at easy & hard, so a full day must use two locates.
+  const pool: Question[] = [
+    mk("e1", "A", "easy", "locate"),
+    mk("m1", "B", "medium", "capital"),
+    mk("h1", "C", "hard", "locate"),
+  ];
+  const cal = assembleCalendar(pool, "2026-08-01", 1, 45, 9);
+  assert.equal(cal.puzzles.length, 1);
+  const types = cal.puzzles[0]!.questions.map((q) => q.clueType);
+  assert.equal(types.filter((t) => t === "locate").length, 2, "two locates are allowed in one day");
 });

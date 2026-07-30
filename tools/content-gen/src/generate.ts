@@ -23,6 +23,17 @@ import { sparql } from "./wikidata.ts";
 
 const url = (p: string) => new URL(p, import.meta.url);
 
+/**
+ * Disputed / unrecognised territories excluded as ANSWERS. A tap-the-country daily can't assert a
+ * territorial side without risking bans/controversy, so these never become the correct answer.
+ * Keyed by ISO alpha-3 (Wikidata P298): Palestine, Taiwan, Western Sahara, Kosovo. See design doc.
+ */
+const DISPUTED_ISO = new Set(["PSE", "TWN", "ESH", "XKX", "XKK"]);
+
+/** Peaks whose country attribution depends on a disputed border (e.g. Serbia's highest point only if
+ *  Kosovo is counted as Serbia). Excluded from highest-point questions. */
+const DISPUTED_PEAKS = new Set(["Velika Rudoka", "Đeravica", "Daravica", "Deravica"]);
+
 /** Run async fn over items with limited concurrency (be polite to WDQS). */
 async function mapPool<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
@@ -298,7 +309,7 @@ async function main() {
       nameOf,
     ),
     ...buildUniqueValue(
-      peakRows.map((r) => ({ iso: r.iso!, value: r.peakLabel! })),
+      peakRows.filter((r) => !DISPUTED_PEAKS.has(r.peakLabel!)).map((r) => ({ iso: r.iso!, value: r.peakLabel! })),
       allowed,
       "highest-point",
       (v) => `${v} is the highest point of which country?`,
@@ -314,8 +325,10 @@ async function main() {
 
   const autoQs = assignDifficulty(auto, obscurity);
   const curated = await curatedTrivia(allowed);
-  // Drop anything that evokes tragedy/atrocity (keeps the daily light).
-  const all: Question[] = [...autoQs, ...curated].filter((q) => !isSensitiveText(q.prompt));
+  // Drop tragedy/atrocity clues (keeps the daily light) and any answer on a disputed territory.
+  const all: Question[] = [...autoQs, ...curated].filter(
+    (q) => !isSensitiveText(q.prompt) && !DISPUTED_ISO.has(q.answerIso),
+  );
 
   // Obscure, near-unanswerable types move OUT of the mandatory 3 into the bonus (unlocked on 3/3).
   const BONUS_TYPES = new Set(["calling-code", "tld", "highest-point", "currency"]);
@@ -325,6 +338,12 @@ async function main() {
   const mDiff = { easy: 0, medium: 0, hard: 0 };
   for (const q of mandatory) mDiff[q.difficulty]++;
   console.log("mandatory pool by difficulty:", mDiff, "(calendar length = smallest tier, minus no-repeat/type-cap losses)");
+  // Person share per tier — each day allows only ONE person question, so non-person supply per tier
+  // (especially hard) is what bounds the calendar.
+  const isPerson = (t: string) => t === "birthplace" || t === "nationality" || t === "deathplace";
+  const split = { easy: [0, 0], medium: [0, 0], hard: [0, 0] } as Record<string, [number, number]>;
+  for (const q of mandatory) split[q.difficulty][isPerson(q.clueType) ? 0 : 1]++;
+  console.log("person / non-person per tier:", { easy: split.easy, medium: split.medium, hard: split.hard });
 
   const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 400, 45, 0.28, bonusPool);
 

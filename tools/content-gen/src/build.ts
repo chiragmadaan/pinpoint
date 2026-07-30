@@ -301,9 +301,21 @@ function fmtKey(dt: Date): string {
 }
 
 /**
+ * Category for the per-day "one question per kind" rule. Person-based clues (birthplace, nationality,
+ * deathplace) all read as "which country is this person from", so they count as ONE kind — a day
+ * never gets two of them. Every other clue type is its own kind. (The rule applies to the main 3;
+ * the bonus is exempt.)
+ */
+export function clueCategory(clueType: ClueType): string {
+  if (clueType === "birthplace" || clueType === "nationality" || clueType === "deathplace") return "person";
+  return clueType;
+}
+
+/**
  * Assemble a daily calendar: each day = 1 easy + 1 medium + 1 hard. No question is ever reused, no
  * country repeats within `windowDays`, and the 3 questions in a day are all different countries.
- * Stops when any tier runs dry (never silently repeats).
+ * Categories: distinct is preferred, at most one person question, and no category three times (see
+ * clueCategory). Stops when any tier runs dry (never silently repeats).
  */
 export function assembleCalendar(
   pool: Question[],
@@ -329,14 +341,23 @@ export function assembleCalendar(
   // Progressive relaxation: distinct type today + under the type cap + fresh country, then drop
   // constraints one at a time so a slot is never left empty. Shuffle (not a window) supplies order,
   // so there's no periodic pattern.
-  const pick = (arr: Question[], banIso: Set<string>, banType: Set<string>, day: number): Question | null => {
+  const pick = (arr: Question[], banIso: Set<string>, catCount: Record<string, number>, day: number): Question | null => {
     const ok = (q: Question) => !usedQ.has(q.id) && !banIso.has(q.answerIso);
+    const catOf = (q: Question) => clueCategory(q.clueType);
+    const freshCat = (q: Question) => (catCount[catOf(q)] ?? 0) === 0; // a category not used yet today
+    // Person clues ("which country is X from") are the redundant ones -> at most ONE per day. Every
+    // other category may appear twice (e.g. an easy + a hard "Locate X" reads as a difficulty ramp,
+    // not repetition), but never three times.
+    const canRepeat = (q: Question) => (catCount[catOf(q)] ?? 0) < (catOf(q) === "person" ? 1 : 2);
     const underCap = (q: Question) => (typeCount[q.clueType] ?? 0) < maxPerType;
+    // Prefer three distinct categories; fall back to a second of a category only when needed, so the
+    // calendar stays full without ever pairing two person questions or three of anything.
     return (
-      arr.find((q) => ok(q) && !banType.has(q.clueType) && underCap(q) && !isRecent(q.answerIso, day)) ??
-      arr.find((q) => ok(q) && !banType.has(q.clueType) && underCap(q)) ??
-      arr.find((q) => ok(q) && !banType.has(q.clueType)) ?? // distinct type today, drop cap + window
-      arr.find((q) => ok(q)) ?? // last resort: any unused, new country today
+      arr.find((q) => ok(q) && freshCat(q) && underCap(q) && !isRecent(q.answerIso, day)) ??
+      arr.find((q) => ok(q) && freshCat(q) && underCap(q)) ??
+      arr.find((q) => ok(q) && freshCat(q)) ??
+      arr.find((q) => ok(q) && canRepeat(q) && underCap(q)) ??
+      arr.find((q) => ok(q) && canRepeat(q)) ??
       null
     );
   };
@@ -345,15 +366,15 @@ export function assembleCalendar(
   let dt = parseKey(startDateKey);
   for (let day = 0; day < maxDays; day++) {
     const banIso = new Set<string>();
-    const banType = new Set<string>();
+    const catCount: Record<string, number> = {};
     const picks: Question[] = [];
     for (const diff of ["easy", "medium", "hard"] as const) {
-      const q = pick(byDiff[diff], banIso, banType, day);
+      const q = pick(byDiff[diff], banIso, catCount, day);
       if (!q) break;
       picks.push(q);
       usedQ.add(q.id);
       banIso.add(q.answerIso);
-      banType.add(q.clueType);
+      catCount[clueCategory(q.clueType)] = (catCount[clueCategory(q.clueType)] ?? 0) + 1;
       typeCount[q.clueType] = (typeCount[q.clueType] ?? 0) + 1;
       recent.push({ iso: q.answerIso, day });
     }

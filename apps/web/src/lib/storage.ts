@@ -37,13 +37,16 @@ const DEV_KEY = "pinpoint.dev";
 export interface DevFlags {
   /** Bypass the daily 3-question limit: replay endlessly for testing. */
   unlimited: boolean;
+  /** Remove the per-question countdown so the game can be tested at a patient pace. */
+  noTimer: boolean;
 }
 
 export function loadDevFlags(): DevFlags {
+  const defaults: DevFlags = { unlimited: false, noTimer: false };
   try {
-    return { unlimited: false, ...(JSON.parse(localStorage.getItem(DEV_KEY) || "{}") as Partial<DevFlags>) };
+    return { ...defaults, ...(JSON.parse(localStorage.getItem(DEV_KEY) || "{}") as Partial<DevFlags>) };
   } catch {
-    return { unlimited: false };
+    return defaults;
   }
 }
 

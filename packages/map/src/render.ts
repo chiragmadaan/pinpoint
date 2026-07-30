@@ -1,4 +1,4 @@
-import { centroid, geometryBounds } from "./geometry.ts";
+import { layoutLabels } from "./labels.ts";
 import type { Geometry, Iso3, MapFeature, Projection } from "./types.ts";
 
 export interface MapStyle {
@@ -56,6 +56,7 @@ export function drawMap(
   projection: Projection,
   state: RenderState = {},
   style: MapStyle = DEFAULT_STYLE,
+  zoom = 1,
 ): void {
   const { canvas } = ctx;
   ctx.fillStyle = style.ocean;
@@ -71,27 +72,38 @@ export function drawMap(
     ctx.stroke();
   }
 
-  if (state.labels) drawLabels(ctx, features, projection);
+  if (state.labels) drawLabels(ctx, features, projection, zoom);
 }
 
-/** Country-name labels — only where the country is big enough on screen to be legible (skip specks;
- * they appear as you zoom in). Stroked for contrast against land/ocean. */
-function drawLabels(ctx: CanvasRenderingContext2D, features: MapFeature[], projection: Projection): void {
-  ctx.font = "600 11px system-ui, sans-serif";
+/**
+ * Country-name labels. Placement/sizing/abbreviation/collision all live in the pure `layoutLabels`;
+ * here we just supply canvas text measurement and paint the results (halo stroke + fill).
+ */
+function drawLabels(
+  ctx: CanvasRenderingContext2D,
+  features: MapFeature[],
+  projection: Projection,
+  zoom: number,
+): void {
+  const { canvas } = ctx;
+  const measure = (text: string, fontPx: number): number => {
+    ctx.font = `600 ${fontPx}px system-ui, sans-serif`;
+    return ctx.measureText(text).width;
+  };
+  const labels = layoutLabels(features, projection.forward, measure, {
+    zoom,
+    viewport: { width: canvas.width, height: canvas.height },
+  });
+
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.lineWidth = 3;
   ctx.lineJoin = "round";
-  for (const f of features) {
-    if (!f.name) continue;
-    const [minLon, minLat, maxLon, maxLat] = geometryBounds(f.geometry);
-    const [x0] = projection.forward([minLon, maxLat]);
-    const [x1] = projection.forward([maxLon, minLat]);
-    if (x1 - x0 < 34) continue; // too small at this zoom
-    const [cx, cy] = projection.forward(centroid(f.geometry));
+  for (const l of labels) {
+    ctx.font = `600 ${l.fontPx}px system-ui, sans-serif`;
+    ctx.lineWidth = Math.max(2, l.fontPx / 6); // halo scales with the text so small labels stay crisp
     ctx.strokeStyle = "rgba(11,30,51,0.9)";
-    ctx.strokeText(f.name, cx, cy);
+    ctx.strokeText(l.text, l.x, l.y);
     ctx.fillStyle = "#eaf2f8";
-    ctx.fillText(f.name, cx, cy);
+    ctx.fillText(l.text, l.x, l.y);
   }
 }

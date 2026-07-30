@@ -1,44 +1,50 @@
-import { centroid, haversineKm, pointInGeometry } from "./geometry.ts";
+import { projectedDistanceToGeometry } from "./geometry.ts";
 import type { Iso3, LonLat, MapFeature, Projection } from "./types.ts";
 
 export interface HitOptions {
   /**
-   * Snap tolerance in km. If a tap lands in no country (ocean) but within this distance of a
-   * country's centroid, we snap to it. This is what makes micro-nations (Singapore, Malta,
-   * Vatican) selectable — the core fat-finger fix. 0 disables snapping.
+   * Snap tolerance in *screen pixels*. If a tap lands in no country but within this distance of a
+   * country's border, we snap to it — this is what makes micro-nations and clustered islands
+   * selectable (the core fat-finger fix). Because it's measured in pixels (not km), snapping
+   * tightens automatically as you zoom in, which is what lets you separate a cluster by zooming.
+   * 0 disables snapping (exact containment only).
    */
-  snapKm?: number;
+  snapPx?: number;
 }
 
-const DEFAULT_SNAP_KM = 600;
+const DEFAULT_SNAP_PX = 24;
 
-/** Resolve a lon/lat to a country: exact containment first, else nearest centroid within snapKm. */
-export function resolveLonLat(
-  pt: LonLat,
+/**
+ * Resolve a projected point to a country by distance to each country's *border* in the projected
+ * (pixel) space. Exact containment wins (distance 0); otherwise the nearest border within
+ * `tolerance` is selected, or null if nothing is close enough.
+ *
+ * This replaces centroid-distance snapping, which mis-fired two ways: archipelago nations have a
+ * centroid out in open ocean (far from every island), and in tight clusters the nearest *centroid*
+ * is often not the country your finger is actually over.
+ */
+export function resolveNearest(
+  tap: [number, number],
   features: MapFeature[],
-  opts: HitOptions = {},
+  project: (ll: LonLat) => [number, number],
+  tolerance: number,
 ): Iso3 | null {
+  let best: { iso: Iso3; d: number } | null = null;
   for (const f of features) {
-    if (pointInGeometry(pt, f.geometry)) return f.iso;
-  }
-  const snapKm = opts.snapKm ?? DEFAULT_SNAP_KM;
-  if (snapKm <= 0) return null;
-
-  let best: { iso: Iso3; km: number } | null = null;
-  for (const f of features) {
-    const km = haversineKm(pt, centroid(f.geometry));
-    if (km <= snapKm && (best === null || km < best.km)) best = { iso: f.iso, km };
+    const d = projectedDistanceToGeometry(tap, f.geometry, project);
+    if (d === 0) return f.iso; // inside a country -> exact hit, done
+    if (d <= tolerance && (best === null || d < best.d)) best = { iso: f.iso, d };
   }
   return best?.iso ?? null;
 }
 
-/** Resolve a canvas pixel tap to a country by inverting the projection then hit-testing. */
+/** Resolve a canvas pixel tap to a country using the (zoom-aware) view projection. */
 export function resolveTap(
-  px: number,
-  py: number,
+  sx: number,
+  sy: number,
   projection: Projection,
   features: MapFeature[],
   opts: HitOptions = {},
 ): Iso3 | null {
-  return resolveLonLat(projection.inverse([px, py]), features, opts);
+  return resolveNearest([sx, sy], features, projection.forward, opts.snapPx ?? DEFAULT_SNAP_PX);
 }

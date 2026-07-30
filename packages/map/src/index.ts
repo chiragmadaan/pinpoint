@@ -75,7 +75,7 @@ export function createWorldMap(opts: WorldMapOptions): WorldMap {
 
   const render = () => {
     const ctx = canvas.getContext("2d");
-    if (ctx) drawMap(ctx, features, proj, { ...state, labels: showLabels }, style);
+    if (ctx) drawMap(ctx, features, proj, { ...state, labels: showLabels }, style, k);
   };
 
   const toCanvas = (e: { clientX: number; clientY: number }): [number, number] => {

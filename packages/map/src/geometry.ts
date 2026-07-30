@@ -43,23 +43,62 @@ export function pointInGeometry(pt: LonLat, geom: Geometry): boolean {
   return geom.coordinates.some((poly) => pointInPolygon(pt, poly));
 }
 
-/** Rough centroid: mean of all outer-ring vertices. Good enough for nearest-country snapping. */
-export function centroid(geom: Geometry): LonLat {
-  const outers: Ring[] =
-    geom.type === "Polygon"
-      ? [geom.coordinates[0]!]
-      : geom.coordinates.map((poly) => poly[0]!).filter(Boolean);
-  let sx = 0;
-  let sy = 0;
-  let n = 0;
-  for (const ring of outers) {
-    for (const [x, y] of ring) {
-      sx += x;
-      sy += y;
-      n++;
+/** Signed area of a ring (planar shoelace). Sign encodes winding order. */
+export function ringArea(ring: Ring): number {
+  let a = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [xi, yi] = ring[i]!;
+    const [xn, yn] = ring[(i + 1) % ring.length]!;
+    a += xi * yn - xn * yi;
+  }
+  return a / 2;
+}
+
+/**
+ * The largest outer ring of a geometry by absolute area — i.e. the main landmass. Label placement
+ * uses this so a country's name sits on its mainland instead of being averaged out into the ocean
+ * by far-flung islands (the reason "United States of America" drifted to the top-left).
+ */
+export function largestOuterRing(geom: Geometry): Ring | null {
+  if (geom.type === "Polygon") return geom.coordinates[0] ?? null;
+  let best: Ring | null = null;
+  let bestArea = -1;
+  for (const poly of geom.coordinates) {
+    const outer = poly[0];
+    if (!outer) continue;
+    const a = Math.abs(ringArea(outer));
+    if (a > bestArea) {
+      bestArea = a;
+      best = outer;
     }
   }
-  return n === 0 ? [0, 0] : [sx / n, sy / n];
+  return best;
+}
+
+/** Area-weighted centroid of a planar polygon ring (falls back to the vertex mean if degenerate). */
+export function polygonCentroidXY(pts: [number, number][]): [number, number] {
+  let a = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [xi, yi] = pts[i]!;
+    const [xn, yn] = pts[(i + 1) % pts.length]!;
+    const cross = xi * yn - xn * yi;
+    a += cross;
+    cx += (xi + xn) * cross;
+    cy += (yi + yn) * cross;
+  }
+  a /= 2;
+  if (Math.abs(a) < 1e-9) {
+    let mx = 0;
+    let my = 0;
+    for (const [x, y] of pts) {
+      mx += x;
+      my += y;
+    }
+    return [mx / pts.length, my / pts.length];
+  }
+  return [cx / (6 * a), cy / (6 * a)];
 }
 
 /** Lon/lat bounding box of a geometry: [minLon, minLat, maxLon, maxLat]. */
@@ -80,16 +119,49 @@ export function geometryBounds(geom: Geometry): [number, number, number, number]
   return [minLon, minLat, maxLon, maxLat];
 }
 
-/** Great-circle distance in km between two lon/lat points. */
-export function haversineKm(a: LonLat, b: LonLat): number {
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const [lon1, lat1] = a;
-  const [lon2, lat2] = b;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+/** Shortest distance from planar point `p` to the segment `a`-`b` (same units as the inputs). */
+export function pointToSegmentDistance(
+  p: [number, number],
+  a: [number, number],
+  b: [number, number],
+): number {
+  const [px, py] = p;
+  const [ax, ay] = a;
+  const [bx, by] = b;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/**
+ * Min distance from projected point `p` to `geom`, measured in the projected (pixel) space: every
+ * lon/lat vertex is mapped through `project` first. Returns 0 when `p` is inside the geometry
+ * (within the outer ring and not in a hole). This is the basis of pixel-accurate, zoom-aware tap
+ * snapping — unlike centroid distance, it stays correct for archipelago nations (whose centroid
+ * sits in open ocean) and for tight island clusters.
+ */
+export function projectedDistanceToGeometry(
+  p: [number, number],
+  geom: Geometry,
+  project: (ll: LonLat) => [number, number],
+): number {
+  const polys: Ring[][] = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+  let best = Infinity;
+  for (const rings of polys) {
+    const projected = rings.map((r) => r.map(project));
+    const [outer, ...holes] = projected;
+    if (!outer) continue;
+    // The equirectangular projection is affine, so ray-casting on projected coords is exact.
+    if (pointInRing(p, outer) && !holes.some((h) => pointInRing(p, h))) return 0;
+    for (const ring of projected) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const d = pointToSegmentDistance(p, ring[j]!, ring[i]!);
+        if (d < best) best = d;
+      }
+    }
+  }
+  return best;
 }

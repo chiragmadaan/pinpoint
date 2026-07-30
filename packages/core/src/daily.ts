@@ -70,3 +70,19 @@ export function recordCompletedDay(
     history: { ...state.history, [key]: verdicts },
   };
 }
+
+/**
+ * The streak as it stands *right now*, for display. Unlike the stored `streak` (which is only
+ * recomputed when a day is completed), this reflects a missed day immediately: after a gap the
+ * streak is already broken (0). Keeps the header honest instead of showing a stale number that
+ * then jumps down the moment you finish today's puzzle.
+ *
+ * NOTE: this is per-device — with no account sync, a day played on another device can't count
+ * here, so cross-device play will still break the streak. That needs cloud save to fix.
+ */
+export function currentStreak(state: PlayerState, today: string = todayKey()): number {
+  if (state.lastPlayed === null) return 0;
+  if (state.lastPlayed === today) return state.streak; // already played today
+  if (isConsecutiveDay(state.lastPlayed, today)) return state.streak; // last play was yesterday -> alive
+  return 0; // gap -> already broken
+}

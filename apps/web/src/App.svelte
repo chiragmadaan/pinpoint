@@ -5,6 +5,7 @@
     advance,
     buildShareText,
     currentQuestion,
+    currentStreak,
     DEFAULT_SCORE_CONFIG,
     emptyPlayerState,
     hasCompleted,
@@ -103,6 +104,7 @@
     if (!cq) return;
     totalTime = TIMER_SECONDS[cq.difficulty];
     timeLeft = totalTime;
+    if (devNoTimer) return; // dev: no countdown, no auto-submit — the ring is hidden too
     timerId = setInterval(() => {
       timeLeft -= 1;
       if (timeLeft <= 0) {
@@ -123,6 +125,7 @@
   // Dev-only tools
   let devMenuOpen = false;
   let devUnlimited = DEV && loadDevFlags().unlimited; // bypass the daily 3-question limit
+  let devNoTimer = DEV && loadDevFlags().noTimer; // play with no countdown (patient testing)
   let toggleBtn: HTMLButtonElement;
 
   // Svelte action: close the dropdown when clicking anywhere outside it (or the toggle button).
@@ -254,9 +257,12 @@
     session = startSession(currentPuzzle);
     await tick(); // ensure the <canvas> is in the DOM before wiring the map
     if (!map) {
+      // 12x zoom on every device — needed to see/tap tiny island countries (e.g. the Caribbean).
+      const maxZoom = 12;
       map = createWorldMap({
         canvas,
         features,
+        maxZoom,
         onSelect: (iso) => {
           if (session?.phase !== "question") return;
           selected = iso;
@@ -332,8 +338,15 @@
 
   function toggleUnlimited() {
     devUnlimited = !devUnlimited;
-    saveDevFlags({ unlimited: devUnlimited });
+    saveDevFlags({ unlimited: devUnlimited, noTimer: devNoTimer });
     if (devUnlimited && done) void startPlay(); // jump back into play from the results screen
+  }
+
+  function toggleNoTimer() {
+    devNoTimer = !devNoTimer;
+    saveDevFlags({ unlimited: devUnlimited, noTimer: devNoTimer });
+    if (devNoTimer) stopTimer(); // kill any running countdown immediately
+    else if (!revealed) startTimer(); // resume a countdown for the current question
   }
 </script>
 
@@ -347,7 +360,7 @@
   <header>
     <h1>📍 Pinpoint {#if DEV}<span class="dev-badge">DEV</span>{/if}</h1>
     <div class="stats">
-      🔥 {player.streak}
+      🔥 {currentStreak(player)}
       {#if DEV}
         <button bind:this={toggleBtn} class="dev-toggle" class:on={devMenuOpen} on:click={() => (devMenuOpen = !devMenuOpen)} title="Dev menu">⚙ Dev</button>
       {/if}
@@ -360,6 +373,10 @@
       <label class="dev-opt">
         <input type="checkbox" checked={devUnlimited} on:change={toggleUnlimited} />
         Unlimited questions (bypass daily limit)
+      </label>
+      <label class="dev-opt">
+        <input type="checkbox" checked={devNoTimer} on:change={toggleNoTimer} />
+        No timer (play at your own pace)
       </label>
       <button class="dev-btn" on:click={devReset}>↻ Reset progress</button>
     </div>
@@ -401,7 +418,7 @@
       <button on:click={startPlay}>▶ Play</button>
     </section>
   {:else if q}
-    {#if !revealed}
+    {#if !revealed && !devNoTimer}
       <div class="timer-wrap">
         <svg class="timer-ring" class:low={timeLeft <= 5} viewBox="0 0 60 60" width="60" height="60" aria-label="Time left">
           <circle class="track" cx="30" cy="30" r={RING_R} />
