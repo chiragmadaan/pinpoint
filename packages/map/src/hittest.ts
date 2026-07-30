@@ -1,4 +1,4 @@
-import { projectedDistanceToGeometry } from "./geometry.ts";
+import { largestOuterRing, projectedDistanceToGeometry, ringArea } from "./geometry.ts";
 import type { Iso3, LonLat, MapFeature, Projection } from "./types.ts";
 
 export interface HitOptions {
@@ -22,6 +22,10 @@ const DEFAULT_SNAP_PX = 24;
  * This replaces centroid-distance snapping, which mis-fired two ways: archipelago nations have a
  * centroid out in open ocean (far from every island), and in tight clusters the nearest *centroid*
  * is often not the country your finger is actually over.
+ *
+ * When several polygons contain the tap (a micro-state sitting inside a coarser neighbour's
+ * polygon — e.g. Singapore over Malaysia, Vatican over Italy), the SMALLEST one wins, so enclaves
+ * stay selectable instead of being swallowed by the bigger country listed first.
  */
 export function resolveNearest(
   tap: [number, number],
@@ -29,13 +33,19 @@ export function resolveNearest(
   project: (ll: LonLat) => [number, number],
   tolerance: number,
 ): Iso3 | null {
-  let best: { iso: Iso3; d: number } | null = null;
+  let inside: { iso: Iso3; area: number } | null = null; // smallest containing country
+  let best: { iso: Iso3; d: number } | null = null; // nearest border within tolerance
   for (const f of features) {
     const d = projectedDistanceToGeometry(tap, f.geometry, project);
-    if (d === 0) return f.iso; // inside a country -> exact hit, done
-    if (d <= tolerance && (best === null || d < best.d)) best = { iso: f.iso, d };
+    if (d === 0) {
+      const ring = largestOuterRing(f.geometry);
+      const area = ring ? Math.abs(ringArea(ring)) : 0;
+      if (inside === null || area < inside.area) inside = { iso: f.iso, area };
+    } else if (d <= tolerance && (best === null || d < best.d)) {
+      best = { iso: f.iso, d };
+    }
   }
-  return best?.iso ?? null;
+  return inside?.iso ?? best?.iso ?? null;
 }
 
 /** Resolve a canvas pixel tap to a country using the (zoom-aware) view projection. */

@@ -119,6 +119,29 @@ export function geometryBounds(geom: Geometry): [number, number, number, number]
   return [minLon, minLat, maxLon, maxLat];
 }
 
+/**
+ * Does a feature's lon/lat bounding box (from `geometryBounds`) project to anything inside the
+ * `width`×`height` canvas under the current view? Cheap O(1) test used to skip drawing off-screen
+ * countries (viewport culling) — the equirectangular projection is axis-aligned, so projecting the
+ * two bbox corners gives the on-screen box.
+ */
+export function inViewport(
+  bounds: [number, number, number, number],
+  project: (ll: LonLat) => [number, number],
+  width: number,
+  height: number,
+  margin = 0,
+): boolean {
+  const [minLon, minLat, maxLon, maxLat] = bounds;
+  const [ax, ay] = project([minLon, maxLat]);
+  const [bx, by] = project([maxLon, minLat]);
+  const x0 = Math.min(ax, bx);
+  const x1 = Math.max(ax, bx);
+  const y0 = Math.min(ay, by);
+  const y1 = Math.max(ay, by);
+  return !(x1 < -margin || x0 > width + margin || y1 < -margin || y0 > height + margin);
+}
+
 /** Shortest distance from planar point `p` to the segment `a`-`b` (same units as the inputs). */
 export function pointToSegmentDistance(
   p: [number, number],

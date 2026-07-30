@@ -37,6 +37,22 @@ prompt names the person, not the city. Resolving each Wikidata birthplace to coo
 dropping those in disputed regions would close this. ~18 such questions today (answers in
 border-contested countries) are unverified.
 
+## Higher-resolution coastlines (full 1:50m map) — optional
+
+DONE: the ~59 missing micro-states/territories (Singapore, Vatican, Puerto Rico, Mauritius, Malta,
+Bahrain, Maldives, the Caribbean small states, etc.) were **spliced** into `countries.geo.json` from
+Natural Earth 1:50m — 180 → 239 features for only +15% vertices (10.7K → 12.3K) and +70 KB. Viewport
+culling was also added to `render.ts` (`inViewport`). Content-gen reads this same map file for its
+`allowed` set, so **a regen now generates questions for those 59 countries** (mostly non-person
+locate/flag/capital/currency — which also helps the calendar-length problem above).
+
+REMAINING (optional): the existing 180 countries still use coarse **1:110m** coastlines (blocky).
+Swapping the whole map to 1:50m would smooth them, but the decoded GeoJSON is **3.7 MB (1.4 MB gz)**
+and **~99K vertices (~9×)** → mobile pan/zoom jank at the world view. To pursue it: ship the 739 KB
+**TopoJSON** (231 KB gz) and decode at runtime (`data.ts` `featuresFromTopoJSON` + a numeric→ISO3
+map), AND add **geometry simplification** (Douglas–Peucker) to cut vertices. Only worth it if the
+blocky coastlines become a real complaint — the micro-state gap (the actual problem) is already fixed.
+
 ## Geo-localized map borders
 
 The map uses one border set (LoC-cut Kashmir, Taiwan as a separate country, etc.), which is

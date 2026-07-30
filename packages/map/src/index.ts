@@ -41,6 +41,18 @@ export interface WorldMap {
   destroy(): void;
 }
 
+/**
+ * Multiplicative zoom factor for one wheel event, proportional to how far the user scrolled and
+ * normalized across devices: pixel touchpads fire many tiny events, line-mode mice a few big ones —
+ * so a whole gesture zooms about the same either way (fixes touchpads zooming in far too fast).
+ * Clamped so no single event can jump the zoom. deltaY < 0 (scroll up / pinch out) zooms in.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode = 0, viewportHeight = 600): number {
+  const px = deltaMode === 1 ? deltaY * 16 : deltaMode === 2 ? deltaY * viewportHeight : deltaY;
+  const exp = Math.max(-0.5, Math.min(0.5, -px * 0.002));
+  return Math.exp(exp);
+}
+
 /** DOM factory: pan/zoomable map that reports single-tap country selection. */
 export function createWorldMap(opts: WorldMapOptions): WorldMap {
   const { canvas, features, onSelect } = opts;
@@ -48,6 +60,8 @@ export function createWorldMap(opts: WorldMapOptions): WorldMap {
   const maxZoom = opts.maxZoom ?? 8;
   const base = equirectangular({ width: canvas.width, height: canvas.height });
   const byIso = new Map(features.map((f) => [f.iso, f]));
+  // lon/lat bounds never change, so precompute once for per-frame viewport culling.
+  const featureBounds = features.map((f) => geometryBounds(f.geometry));
 
   // View transform: screen = base * k + t
   let k = 1;
@@ -75,7 +89,7 @@ export function createWorldMap(opts: WorldMapOptions): WorldMap {
 
   const render = () => {
     const ctx = canvas.getContext("2d");
-    if (ctx) drawMap(ctx, features, proj, { ...state, labels: showLabels }, style, k);
+    if (ctx) drawMap(ctx, features, proj, { ...state, labels: showLabels }, style, k, featureBounds);
   };
 
   const toCanvas = (e: { clientX: number; clientY: number }): [number, number] => {
@@ -216,7 +230,7 @@ export function createWorldMap(opts: WorldMapOptions): WorldMap {
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
     const [cx, cy] = toCanvas(e);
-    zoomAround(cx, cy, e.deltaY < 0 ? 1.2 : 1 / 1.2);
+    zoomAround(cx, cy, wheelZoomFactor(e.deltaY, e.deltaMode, canvas.height));
   };
 
   const onDbl = (e: MouseEvent) => {

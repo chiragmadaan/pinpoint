@@ -1,3 +1,4 @@
+import { inViewport } from "./geometry.ts";
 import { layoutLabels } from "./labels.ts";
 import type { Geometry, Iso3, MapFeature, Projection } from "./types.ts";
 
@@ -57,6 +58,7 @@ export function drawMap(
   state: RenderState = {},
   style: MapStyle = DEFAULT_STYLE,
   zoom = 1,
+  bounds?: [number, number, number, number][], // precomputed lon/lat bbox per feature, for culling
 ): void {
   const { canvas } = ctx;
   ctx.fillStyle = style.ocean;
@@ -64,7 +66,10 @@ export function drawMap(
   ctx.lineWidth = 0.5;
   ctx.strokeStyle = style.border;
 
-  for (const f of features) {
+  for (let i = 0; i < features.length; i++) {
+    // Viewport culling: skip countries whose bbox is entirely off-screen (big win when zoomed in).
+    if (bounds && !inViewport(bounds[i]!, projection.forward, canvas.width, canvas.height)) continue;
+    const f = features[i]!;
     ctx.beginPath();
     tracePath(ctx, f.geometry, projection);
     ctx.fillStyle = fillFor(f.iso, state, style);

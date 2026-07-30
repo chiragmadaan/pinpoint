@@ -43,6 +43,9 @@
     typeof location !== "undefined" ? location.origin + import.meta.env.BASE_URL : "https://pinpoint.example";
   // Dev tools show under `pnpm dev`, OR in a build made with VITE_DEV_TOOLS=1 (the hosted /dev/ variant).
   const DEV = import.meta.env.DEV || import.meta.env.VITE_DEV_TOOLS === "1";
+  // Build info injected by vite.config.ts (SHA is empty in local dev).
+  const APP_VERSION = import.meta.env.VITE_APP_VERSION;
+  const BUILD_SHA = import.meta.env.VITE_BUILD_SHA;
   const EMOJI: Record<Verdict, string> = { correct: "🟩", neighbor: "🟨", wrong: "⬛" };
   const base = import.meta.env.BASE_URL;
 
@@ -258,7 +261,7 @@
     await tick(); // ensure the <canvas> is in the DOM before wiring the map
     if (!map) {
       // 12x zoom on every device — needed to see/tap tiny island countries (e.g. the Caribbean).
-      const maxZoom = 12;
+      const maxZoom = 16;
       map = createWorldMap({
         canvas,
         features,
@@ -454,8 +457,8 @@
     <div class="map-wrap">
       <canvas bind:this={canvas} width="720" height="360"></canvas>
       <div class="zoom-controls">
-        <button class="zoom-btn" on:click={() => map?.zoomBy(1.4)} aria-label="Zoom in" title="Zoom in">＋</button>
-        <button class="zoom-btn" on:click={() => map?.zoomBy(1 / 1.4)} aria-label="Zoom out" title="Zoom out">－</button>
+        <button class="zoom-btn" on:click={() => map?.zoomBy(1.6)} aria-label="Zoom in" title="Zoom in">＋</button>
+        <button class="zoom-btn" on:click={() => map?.zoomBy(1 / 1.6)} aria-label="Zoom out" title="Zoom out">－</button>
       </div>
     </div>
     <p class="hint">{isTouch ? "Pinch to zoom · drag to pan" : "Scroll or use ＋/－ to zoom · drag to pan"}</p>
@@ -482,6 +485,8 @@
     <p>Loading today's puzzle…</p>
   {/if}
 </main>
+
+<div class="version">v{APP_VERSION}{BUILD_SHA ? ` · ${BUILD_SHA}` : ""}</div>
 
 <style>
   :global(body) { margin: 0; background: #0b1e33; color: #eaf2f8; font-family: system-ui, sans-serif; }
@@ -548,6 +553,15 @@
   .welcome { text-align: center; padding: 2rem 1rem; }
   .welcome h2 { font-size: 1.6rem; margin: 0; }
   .welcome-sub { opacity: 0.8; margin: 0.5rem 0 0; }
+  .version {
+    position: fixed;
+    bottom: 6px;
+    right: 8px;
+    font-size: 0.7rem;
+    opacity: 0.4;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
   .loading { opacity: 0.7; }
   button { margin-top: 0.9rem; width: 100%; padding: 0.9rem; font-size: 1.05rem; font-weight: 600;
     border: 0; border-radius: 10px; background: #f2c14e; color: #0b1e33; cursor: pointer; }
