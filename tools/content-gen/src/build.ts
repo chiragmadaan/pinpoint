@@ -338,20 +338,29 @@ export function assembleCalendar(
   const maxPerType = Math.ceil(maxDays * 3 * typeCap);
   const isRecent = (iso: string, day: number) => recent.some((r) => r.iso === iso && day - r.day < windowDays);
 
-  // Progressive relaxation: distinct type today + under the type cap + fresh country, then drop
-  // constraints one at a time so a slot is never left empty. Shuffle (not a window) supplies order,
-  // so there's no periodic pattern.
-  const pick = (arr: Question[], banIso: Set<string>, catCount: Record<string, number>, day: number): Question | null => {
-    const ok = (q: Question) => !usedQ.has(q.id) && !banIso.has(q.answerIso);
-    const catOf = (q: Question) => clueCategory(q.clueType);
-    const freshCat = (q: Question) => (catCount[catOf(q)] ?? 0) === 0; // a category not used yet today
-    // Person clues ("which country is X from") are the redundant ones -> at most ONE per day. Every
-    // other category may appear twice (e.g. an easy + a hard "Locate X" reads as a difficulty ramp,
-    // not repetition), but never three times.
-    const canRepeat = (q: Question) => (catCount[catOf(q)] ?? 0) < (catOf(q) === "person" ? 1 : 2);
+  const isPerson = (q: Question) => clueCategory(q.clueType) === "person";
+  const diffs = ["easy", "medium", "hard"] as const;
+  type Diff = (typeof diffs)[number];
+
+  // Pick a question of the wanted person-ness from a tier, honoring every per-day + global constraint,
+  // WITHOUT committing (so a day can try several person placements). Progressive relaxation: fresh
+  // category + under cap + fresh country, then drop constraints one at a time. Prefer three distinct
+  // categories; allow a second of a non-person category before giving up (never two person / three of
+  // one). Shuffle order (not a window) supplies variety.
+  const pickTyped = (
+    arr: Question[],
+    wantPerson: boolean,
+    banIso: Set<string>,
+    catCount: Record<string, number>,
+    usedToday: Set<string>,
+    day: number,
+  ): Question | null => {
+    const ok = (q: Question) =>
+      isPerson(q) === wantPerson && !usedQ.has(q.id) && !usedToday.has(q.id) && !banIso.has(q.answerIso);
+    const cat = (q: Question) => clueCategory(q.clueType);
+    const freshCat = (q: Question) => (catCount[cat(q)] ?? 0) === 0;
+    const canRepeat = (q: Question) => (catCount[cat(q)] ?? 0) < (cat(q) === "person" ? 1 : 2);
     const underCap = (q: Question) => (typeCount[q.clueType] ?? 0) < maxPerType;
-    // Prefer three distinct categories; fall back to a second of a category only when needed, so the
-    // calendar stays full without ever pairing two person questions or three of anything.
     return (
       arr.find((q) => ok(q) && freshCat(q) && underCap(q) && !isRecent(q.answerIso, day)) ??
       arr.find((q) => ok(q) && freshCat(q) && underCap(q)) ??
@@ -362,26 +371,52 @@ export function assembleCalendar(
     );
   };
 
+  // Try to fill a day: `personTier` gets a person question, the other tiers get non-person (null =
+  // a no-person day). Returns the three picks or null — no commit, so callers can try alternatives.
+  const tryDay = (personTier: Diff | null, day: number): Record<Diff, Question> | null => {
+    const banIso = new Set<string>();
+    const catCount: Record<string, number> = {};
+    const usedToday = new Set<string>();
+    const picks = {} as Record<Diff, Question>;
+    for (const diff of diffs) {
+      const q = pickTyped(byDiff[diff], diff === personTier, banIso, catCount, usedToday, day);
+      if (!q) return null;
+      picks[diff] = q;
+      banIso.add(q.answerIso);
+      catCount[clueCategory(q.clueType)] = (catCount[clueCategory(q.clueType)] ?? 0) + 1;
+      usedToday.add(q.id);
+    }
+    return picks;
+  };
+
+  // Remaining unused non-person questions in a tier — the resource that bounds the calendar.
+  const nonPersonLeft = (arr: Question[]) =>
+    arr.reduce((n, q) => n + (!usedQ.has(q.id) && !isPerson(q) ? 1 : 0), 0);
+
   const puzzles: DailyPuzzle[] = [];
   let dt = parseKey(startDateKey);
   for (let day = 0; day < maxDays; day++) {
-    const banIso = new Set<string>();
-    const catCount: Record<string, number> = {};
-    const picks: Question[] = [];
-    for (const diff of ["easy", "medium", "hard"] as const) {
-      const q = pick(byDiff[diff], banIso, catCount, day);
-      if (!q) break;
-      picks.push(q);
+    // Spend the day's single person question in whichever tier's non-person supply is scarcest, so
+    // the abundant person pool covers for it and scarce non-person questions stretch across more days.
+    // Fall through the other tiers, then a no-person day; stop only when nothing fills.
+    const order = [...diffs].sort((a, b) => nonPersonLeft(byDiff[a]) - nonPersonLeft(byDiff[b]));
+    let picks: Record<Diff, Question> | null = null;
+    for (const pt of order) {
+      picks = tryDay(pt, day);
+      if (picks) break;
+    }
+    if (!picks) picks = tryDay(null, day);
+    if (!picks) break; // no fillable arrangement -> calendar ends
+
+    for (const diff of diffs) {
+      const q = picks[diff];
       usedQ.add(q.id);
-      banIso.add(q.answerIso);
-      catCount[clueCategory(q.clueType)] = (catCount[clueCategory(q.clueType)] ?? 0) + 1;
       typeCount[q.clueType] = (typeCount[q.clueType] ?? 0) + 1;
       recent.push({ iso: q.answerIso, day });
     }
-    if (picks.length < 3) break; // a tier ran dry
-    // Attach a bonus question: unused, and a different country from the day's three.
-    const bonus = bonuses.find((b) => !usedQ.has(b.id) && !banIso.has(b.answerIso));
-    const day3: DailyPuzzle = { date: fmtKey(dt), questions: [picks[0]!, picks[1]!, picks[2]!] };
+    const dayIsos = new Set(diffs.map((d) => picks![d].answerIso));
+    const bonus = bonuses.find((b) => !usedQ.has(b.id) && !dayIsos.has(b.answerIso));
+    const day3: DailyPuzzle = { date: fmtKey(dt), questions: [picks.easy, picks.medium, picks.hard] };
     if (bonus) {
       usedQ.add(bonus.id);
       day3.bonus = bonus;

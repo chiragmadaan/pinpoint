@@ -160,6 +160,30 @@ test("assembleCalendar: at most one person question, and never three of any cate
   }
 });
 
+test("assembleCalendar balances person questions into the scarce-non-person tier to maximize days", () => {
+  const mk = (id: string, iso: string, difficulty: Question["difficulty"], clueType: Question["clueType"]): Question => ({
+    id, clueType, difficulty, prompt: id, answerIso: iso, acceptedIso: [iso],
+  });
+  // Non-person is the scarce resource: easy has 2 (locate), medium 5 (capital), hard 2 (flag);
+  // person (nationality) is abundant in easy & hard. Max days with ≤1 person/day = 4, but only if
+  // the person question is spent in whichever tier's non-person is scarcest that day.
+  const pool: Question[] = [
+    ...[1, 2, 3, 4, 5].map((i) => mk(`ep${i}`, `EP${i}`, "easy", "nationality")),
+    mk("en1", "EN1", "easy", "locate"), mk("en2", "EN2", "easy", "locate"),
+    ...[1, 2, 3, 4, 5].map((i) => mk(`mn${i}`, `MN${i}`, "medium", "capital")),
+    mk("mp1", "MP1", "medium", "nationality"),
+    mk("hn1", "HN1", "hard", "flag"), mk("hn2", "HN2", "hard", "flag"),
+    ...[1, 2, 3, 4, 5].map((i) => mk(`hp${i}`, `HP${i}`, "hard", "nationality")),
+  ];
+  const cal = assembleCalendar(pool, "2026-08-01", 10, 45, 9);
+  assert.equal(cal.puzzles.length, 4, "person-placement balancing should reach the 4-day maximum");
+  for (const p of cal.puzzles) {
+    const persons = p.questions.filter((q) => q.clueType === "nationality").length;
+    assert.ok(persons <= 1, "at most one person question per day");
+    assert.equal(new Set(p.questions.map((q) => q.answerIso)).size, 3, "distinct countries per day");
+  }
+});
+
 test("assembleCalendar allows two of a non-person category (e.g. easy + hard Locate) when needed", () => {
   const mk = (id: string, iso: string, difficulty: Question["difficulty"], clueType: Question["clueType"]): Question => ({
     id, clueType, difficulty, prompt: id, answerIso: iso, acceptedIso: [iso],

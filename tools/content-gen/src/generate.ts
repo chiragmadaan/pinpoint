@@ -34,6 +34,23 @@ const DISPUTED_ISO = new Set(["PSE", "TWN", "ESH", "XKX", "XKK"]);
  *  Kosovo is counted as Serbia). Excluded from highest-point questions. */
 const DISPUTED_PEAKS = new Set(["Velika Rudoka", "Đeravica", "Daravica", "Deravica"]);
 
+/**
+ * On the map (so tappable) but NOT used as quiz answers: obscure micro-states and non-sovereign
+ * territories that a mass audience can't reasonably place. We added the 1:50m micro-states so they'd
+ * render/snap, but only the recognizable *sovereign* ones (Singapore, Monaco, Vatican, San Marino,
+ * Andorra, Liechtenstein, Bahrain, Maldives, Mauritius, Barbados) should be asked about — everything
+ * else here stays visible but unasked (keeps recognizability + avoids obscure-question flooding).
+ */
+const NON_ANSWER_ISO = new Set([
+  // obscure sovereign micro-states
+  "FSM", "MHL", "TON", "WSM", "NRU", "KIR", "PLW", "SYC", "STP", "COM", "CPV",
+  "VCT", "LCA", "KNA", "GRD", "DMA", "ATG",
+  // non-sovereign territories (and China-sensitive HK/Macao)
+  "MNP", "VIR", "GUM", "ASM", "SGS", "IOT", "SHN", "PCN", "AIA", "CYM", "VGB", "TCA",
+  "MSR", "JEY", "GGY", "IMN", "NIU", "COK", "ABW", "CUW", "SPM", "WLF", "MAF", "BLM",
+  "PYF", "ALA", "FRO", "MAC", "HKG", "HMD", "NFK", "SXM",
+]);
+
 /** Run async fn over items with limited concurrency (be polite to WDQS). */
 async function mapPool<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
@@ -136,7 +153,8 @@ async function mapIsoSet(): Promise<Set<string>> {
   const fc = JSON.parse(await readFile(url("../../../apps/web/public/countries.geo.json"), "utf8")) as {
     features: { id: string }[];
   };
-  return new Set(fc.features.map((f) => f.id));
+  // On the map but not answerable: obscure micro-states / territories (still tappable, just unasked).
+  return new Set(fc.features.map((f) => f.id).filter((iso) => !NON_ANSWER_ISO.has(iso)));
 }
 
 async function curatedTrivia(allowed: Set<string>): Promise<Question[]> {
