@@ -5,11 +5,35 @@ import {
   assembleCalendar,
   assignDifficulty,
   buildUniqueValue,
+  canonicalizeLanguage,
   computeObscurity,
   flagEmoji,
   isSensitiveText,
   leaksCountryName,
 } from "./build.ts";
+
+test("canonicalizeLanguage collapses variants so multi-country languages get deduped away", () => {
+  assert.equal(canonicalizeLanguage("British English"), "English");
+  assert.equal(canonicalizeLanguage("American English"), "English");
+  assert.equal(canonicalizeLanguage("Standard Chinese"), "Chinese");
+  assert.equal(canonicalizeLanguage("Mandarin Chinese"), "Chinese");
+  assert.equal(canonicalizeLanguage("Putonghua"), "Chinese"); // China's Wikidata label -> merges with "Chinese"
+  assert.equal(canonicalizeLanguage("Modern Standard Arabic"), "Arabic");
+  assert.equal(canonicalizeLanguage("Hungarian"), "Hungarian"); // unique language unchanged
+  // Two English variants now collide -> buildUniqueValue drops them as shared (not unique to a country).
+  const out = buildUniqueValue(
+    [
+      { iso: "GBR", value: canonicalizeLanguage("British English") },
+      { iso: "BRN", value: canonicalizeLanguage("American English") },
+      { iso: "HUN", value: canonicalizeLanguage("Hungarian") },
+    ],
+    new Set(["GBR", "BRN", "HUN"]),
+    "language",
+    (v) => `${v}?`,
+    (iso) => iso,
+  );
+  assert.deepEqual(out.map((q) => q.answerIso), ["HUN"]); // only the single-country language survives
+});
 
 test("flagEmoji maps alpha-2 to a flag emoji", () => {
   assert.equal(flagEmoji("FR"), "🇫🇷");

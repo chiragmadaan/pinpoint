@@ -8,7 +8,8 @@ const KEY = DEV_TOOLS ? "pinpoint.player.dev" : "pinpoint.player";
 export function loadPlayerState(): PlayerState {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as PlayerState) : emptyPlayerState();
+    // Merge over defaults so an older/partial save (missing a field) can't crash the app on load.
+    return raw ? { ...emptyPlayerState(), ...(JSON.parse(raw) as Partial<PlayerState>) } : emptyPlayerState();
   } catch {
     return emptyPlayerState();
   }

@@ -140,10 +140,10 @@ export function layoutLabels(
     candidates.push({ text, cx: x, cy: y, halfW: tw / 2, halfH: fontPx / 2, fontPx, minX, maxX, minY, maxY, footprint: wPx * hPx });
   }
 
-  // Bigger landmasses get label priority. A label may only be nudged VERTICALLY, and only as far as
-  // it stays within its OWN landmass — never sideways or onto a neighbour (that's what put "Togo" on
-  // Benin and "Lesotho" on South Africa). Tall thin countries have room to dodge; small ones stay
-  // centred. If no on-country slot is free, drop it (it reappears as you zoom in).
+  // Bigger landmasses get label priority. A label may be nudged (vertically or horizontally) but its
+  // anchor is CLAMPED to its own bbox, so it never leaves the country onto a neighbour (that's what
+  // put "Togo" on Benin and "Lesotho" on South Africa). Bigger countries have room to dodge; small
+  // ones barely move. If no on-country slot is free, drop it (it reappears as you zoom in).
   candidates.sort((a, b) => b.footprint - a.footprint);
   const placed: PlacedLabel[] = [];
   const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];

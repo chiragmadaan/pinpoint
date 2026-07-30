@@ -13,6 +13,7 @@ import {
   buildLocate,
   buildPeopleQuestions,
   buildUniqueValue,
+  canonicalizeLanguage,
   isSensitiveText,
   pvFame,
   type CountryMeta,
@@ -35,13 +36,17 @@ const DISPUTED_ISO = new Set(["PSE", "TWN", "ESH", "XKX", "XKK"]);
 const DISPUTED_PEAKS = new Set(["Velika Rudoka", "Đeravica", "Daravica", "Deravica"]);
 
 /**
- * On the map (so tappable) but NOT used as quiz answers: obscure micro-states and non-sovereign
- * territories that a mass audience can't reasonably place. We added the 1:50m micro-states so they'd
- * render/snap, but only the recognizable *sovereign* ones (Singapore, Monaco, Vatican, San Marino,
- * Andorra, Liechtenstein, Bahrain, Maldives, Mauritius, Barbados) should be asked about — everything
- * else here stays visible but unasked (keeps recognizability + avoids obscure-question flooding).
+ * On the map (so tappable) but NOT used as quiz answers: entities a mass audience can't reasonably
+ * find on the map. We added the 1:50m micro-states so they'd render/snap, but only the recognizable
+ * sovereigns with a *locatable* footprint (Singapore, Andorra, Bahrain, Maldives, Mauritius,
+ * Barbados) get asked about. Everything else stays visible but unasked. Excluded because they're:
+ *   - too small to see/tap even at max zoom (Vatican 0.3px, Monaco 2px, San Marino 3.8px,
+ *     Liechtenstein 6.8px — enclaves swallowed by their surrounding country's polygon), or
+ *   - obscure sovereign micro-states, or non-sovereign territories (incl. China-sensitive HK/Macao).
  */
 const NON_ANSWER_ISO = new Set([
+  // recognizable but un-findable (sub-tappable enclaves) — visible on the map, just not asked
+  "VAT", "MCO", "SMR", "LIE",
   // obscure sovereign micro-states
   "FSM", "MHL", "TON", "WSM", "NRU", "KIR", "PLW", "SYC", "STP", "COM", "CPV",
   "VCT", "LCA", "KNA", "GRD", "DMA", "ATG",
@@ -305,7 +310,9 @@ async function main() {
       nameOf,
     ),
     ...buildUniqueValue(
-      langRows.map((r) => ({ iso: r.iso!, value: r.languageLabel! })),
+      // Canonicalize variants (British English -> English) so a language official in >1 country
+      // resolves as shared and is dropped — keeps only languages that point to a single country.
+      langRows.map((r) => ({ iso: r.iso!, value: canonicalizeLanguage(r.languageLabel!) })),
       allowed,
       "language",
       (v) => `${v} is an official language of which country?`,

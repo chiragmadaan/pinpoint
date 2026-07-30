@@ -62,6 +62,27 @@ export function leaksCountryName(value: string, countryName: string): boolean {
   return false;
 }
 
+/**
+ * Collapse a language label to its base so regional/standard variants group together: "British
+ * English" & "American English" -> "English", "Standard Chinese"/"Mandarin Chinese" -> "Chinese",
+ * "Modern Standard Arabic" -> "Arabic". Feeding this to buildUniqueValue makes a language official
+ * in more than one country resolve as shared and get dropped — so we never ask "British English is
+ * an official language of which country? -> Brunei" when a player would reasonably answer the UK.
+ */
+export function canonicalizeLanguage(label: string): string {
+  const qualifier = /^(british|american|standard|modern|classical|literary|swiss|austrian|brazilian|european|castilian|mandarin|written|spoken|old|middle)\s+/i;
+  let s = label.trim();
+  let prev = "";
+  while (s !== prev) {
+    prev = s;
+    s = s.replace(qualifier, "");
+  }
+  // Synonyms that prefix-stripping alone can't merge (Wikidata labels China's official language
+  // "Putonghua" but Singapore's "Standard Chinese" -> both must collapse so "Chinese" is dropped).
+  const synonyms: Record<string, string> = { putonghua: "Chinese", mandarin: "Chinese", cantonese: "Chinese" };
+  return synonyms[s.toLowerCase()] ?? s;
+}
+
 /** Flag emoji from an ISO 3166-1 alpha-2 code, e.g. "FR" -> 🇫🇷. */
 export function flagEmoji(alpha2: string | undefined): string | undefined {
   if (!alpha2 || alpha2.length !== 2) return undefined;
