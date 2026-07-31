@@ -17,10 +17,12 @@ import {
   canonicalizeLanguage,
   isSensitiveText,
   pvFame,
+  type Candidate,
   type CountryMeta,
   type PersonEntry,
 } from "./build.ts";
 import { pageviews } from "./pageviews.ts";
+import { extract, pickFact } from "./summaries.ts";
 import { QLEVER_PREFIXES, sparql } from "./wikidata.ts";
 
 const url = (p: string) => new URL(p, import.meta.url);
@@ -482,7 +484,7 @@ async function main() {
     ...buildPeopleQuestions(topicEntries("sport"), "sport", (n) => `Which country did ${n} originate in?`, nameOf, 14, 80),
     ...buildPeopleQuestions(topicEntries("drink"), "drink", (n) => `Which country did ${n} originate in?`, nameOf, 14, 90),
     ...buildPeopleQuestions(topicEntries("clothing"), "clothing", (n) => `${n} is traditional dress in which country?`, nameOf, 12, 70),
-    ...buildPeopleQuestions(topicEntries("animal"), "animal", (n) => `The ${n.toLowerCase()} is found only in which country?`, nameOf, 45, 140),
+    ...buildPeopleQuestions(topicEntries("animal"), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 45, 140),
     ...buildPeopleQuestions(topicEntries("festival"), "festival", (n) => `Which country is ${n} celebrated in?`, nameOf, 18, 90),
     ...buildPeopleQuestions(topicEntries("brand"), "brand", (n) => `Which country is ${n} from?`, nameOf, 60, 170),
     ...buildPeopleQuestions(topicEntries("river"), "river", (n) => `The ${n} flows through which country?`, nameOf, 28, 110),
@@ -514,6 +516,39 @@ async function main() {
   console.log("person / non-person per tier:", { easy: split.easy, medium: split.medium, hard: split.hard });
 
   const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 655, 45, 0.28, bonusPool);
+
+  // Reveal facts: upgrade from the Wikidata description to the Wikipedia opening sentence, which is
+  // written to inform rather than to disambiguate ("Species of mammal" -> "a euryhaline species of
+  // oceanic dolphin found in ... the Bay of Bengal and Southeast Asia"). Done AFTER assembly so we
+  // only fetch for the ~2.6k questions that actually shipped, not all 6k candidates. Falls back to
+  // the (filtered) description, and to no fact at all rather than a contentless one.
+  const shipped = calendar.puzzles.flatMap((p) => [...p.questions, ...(p.bonus ? [p.bonus] : [])]) as Candidate[];
+  // Codes ("+43", ".nl") redirect to telephone-numbering-plan articles — technically on-topic but
+  // dull and uninformative ("Telephone numbers in Austria have no standard lengths..."). No fact
+  // reads better than a boring one, so skip them.
+  const NO_FACT_TYPES = new Set(["calling-code", "tld"]);
+  // Clues whose subject IS the answer country (locate/flag/border) draw on the country's own — or
+  // its "Flag of X" — article, where naming the country is normal rather than a restatement.
+  const SUBJECT_IS_ANSWER = new Set(["locate", "flag", "border"]);
+  const withSubject = shipped.filter((q) => q.subject && !NO_FACT_TYPES.has(q.clueType));
+  for (const q of shipped) if (NO_FACT_TYPES.has(q.clueType)) delete q.fact;
+  console.log(`Fetching Wikipedia summaries for ${withSubject.length} shipped questions...`);
+  let sumDone = 0;
+  await mapPool(withSubject, 8, async (q) => {
+    if (++sumDone % 400 === 0) console.log(`  summaries: ${sumDone}/${withSubject.length}`);
+    const ex = await extract(q.subject!);
+    const fact =
+      ex &&
+      pickFact(ex, {
+        subject: q.subject!,
+        answerName: nameOf(q.answerIso),
+        subjectIsAnswer: SUBJECT_IS_ANSWER.has(q.clueType),
+      });
+    if (fact) q.fact = fact;
+  });
+  for (const q of shipped) delete q.subject; // transient — never ships
+  const factCount = shipped.filter((q) => q.fact).length;
+  console.log(`Reveal facts: ${factCount}/${shipped.length} (${Math.round((factCount / shipped.length) * 100)}%)`);
 
   await writeFile(url("../../../data/questions.json"), JSON.stringify(calendar));
   await writeFile(url("../../../apps/web/public/questions.json"), JSON.stringify(calendar));

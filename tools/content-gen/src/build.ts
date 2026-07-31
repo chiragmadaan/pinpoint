@@ -22,7 +22,14 @@ export interface ValueRow {
  * obscurity+clue-weight scoring when set. `sitelinks` gates the easy tier for person questions
  * (pageviews overrate athletes; sitelinks = encyclopedic-household-name check). Both are transient
  * (stripped before the question ships). */
-export type Candidate = Omit<Question, "difficulty"> & { hardness?: number; sitelinks?: number };
+export type Candidate = Omit<Question, "difficulty"> & {
+  hardness?: number;
+  sitelinks?: number;
+  /** The thing the clue is about (person/river/brand/...). Kept through assembly so the reveal fact
+   *  can be enriched from Wikipedia for only the questions that actually made the calendar, then
+   *  stripped before write. Absent for country-attribute clues, whose subject IS the answer. */
+  subject?: string;
+};
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
@@ -85,8 +92,18 @@ export function canonicalizeLanguage(label: string): string {
   return synonyms[s.toLowerCase()] ?? s;
 }
 
-/** Wikidata descriptions that carry no information for a player — never worth showing as a fact. */
-const USELESS_DESC = /^(human|wikimedia (list|disambiguation)|country|sovereign state|taxon|scientific article|given name|family name|surname)\b/i;
+/**
+ * Wikidata descriptions that carry no information for a player. Wikidata descriptions are
+ * DISAMBIGUATORS, not facts, so most of the geographic/taxonomic ones are either contentless
+ * ("species of mammal") or merely restate the answer we just revealed ("river in Russia"). Those
+ * are rejected here; the Wikipedia opening sentence (see summaries.ts) is the real fact source and
+ * this is only the fallback.
+ */
+const USELESS_DESC =
+  /^(human|wikimedia (list|disambiguation)|country|sovereign state|taxon|scientific article|given name|family name|surname|species|subspecies|genus|family|breed|variety)\b/i;
+/** ...and descriptions that are just "<kind> in <place>" — they name the answer instead of teaching. */
+const RESTATES_ANSWER =
+  /^(river|city|town|village|municipality|commune|mountain|lake|island|province|region|district|state|county|settlement|human settlement|capital|dish|food|drink|festival|holiday|company|enterprise|business|band|song|album|film)\b.{0,30}\b(in|of|from)\b/i;
 
 /**
  * Format the reveal one-liner: "<subject> — <description>." Returns undefined when the description
@@ -94,8 +111,8 @@ const USELESS_DESC = /^(human|wikimedia (list|disambiguation)|country|sovereign 
  */
 export function formatFact(subject: string, desc: string | undefined): string | undefined {
   const d = (desc ?? "").trim().replace(/\s+/g, " ");
-  if (d.length < 8 || d.length > 160) return undefined;
-  if (USELESS_DESC.test(d)) return undefined;
+  if (d.length < 12 || d.length > 160) return undefined;
+  if (USELESS_DESC.test(d) || RESTATES_ANSWER.test(d)) return undefined;
   const body = d.charAt(0).toUpperCase() + d.slice(1);
   return `${subject} — ${body}${/[.!?]$/.test(body) ? "" : "."}`;
 }
@@ -132,6 +149,7 @@ export function buildLocate(countries: CountryMeta[]): Candidate[] {
     prompt: `Locate ${c.name}`,
     answerIso: c.iso,
     acceptedIso: [c.iso],
+    subject: c.name, // reveal fact comes from the country's own article
     source: "wikidata:name",
   }));
 }
@@ -148,6 +166,7 @@ export function buildFlag(countries: CountryMeta[]): Candidate[] {
       emoji,
       answerIso: c.iso,
       acceptedIso: [c.iso],
+      subject: `Flag of ${c.name}`, // Wikipedia has a per-country flag article
       source: "flag-emoji",
     });
   }
@@ -187,6 +206,7 @@ export function buildUniqueValue(
       answerIso: iso,
       acceptedIso: [iso],
       fact: formatFact(value, factByValue.get(value)),
+      subject: value,
       source: `wikidata:${clueType}`,
     });
   }
@@ -241,6 +261,7 @@ export function buildBorderQuestions(
       prompt: `Which country borders both ${withArticle(na)} and ${withArticle(nb)}?`,
       answerIso: iso,
       acceptedIso: [iso],
+      subject: nameOf(iso),
       source: "adjacency:pair",
     });
   }
@@ -259,6 +280,7 @@ export function buildBorderQuestions(
       prompt: `Which is the only country that shares a land border with ${withArticle(name)}?`,
       answerIso: only,
       acceptedIso: [only],
+      subject: nameOf(only),
       source: "adjacency:sole",
     });
   }
@@ -346,6 +368,7 @@ export function buildPeopleQuestions(
       answerIso: e.iso,
       acceptedIso: [e.iso],
       fact: formatFact(person, e.fact),
+      subject: person,
       source: `wikidata:${clueType}`,
       hardness: Math.max(0.1, 1 - fame * 0.85), // famous -> easy, obscure -> hard
       sitelinks: e.sitelinks, // carried for the easy-tier gate

@@ -474,7 +474,8 @@
         {/if}
       </p>
       {#if q.fact}
-        <p class="fact">💡 {q.fact}</p>
+        <!-- Facts come from Wikipedia (CC BY-SA), which requires visible attribution. -->
+        <p class="fact">💡 {q.fact} <span class="fact-src">— Wikipedia</span></p>
       {/if}
       <button on:click={onNext}>{nextLabel}</button>
     {:else}
@@ -558,6 +559,7 @@
     background: rgba(255, 255, 255, 0.06); border-left: 3px solid #f2c14e;
     font-size: 0.92rem; line-height: 1.4; opacity: 0.92; text-align: left;
   }
+  .fact-src { opacity: 0.5; font-size: 0.78rem; white-space: nowrap; }
   .welcome { text-align: center; padding: 2rem 1rem; }
   .welcome h2 { font-size: 1.6rem; margin: 0; }
   .welcome-sub { opacity: 0.8; margin: 0.5rem 0 0; }
