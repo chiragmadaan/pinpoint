@@ -9,6 +9,7 @@ import type { PuzzleCalendar, Question } from "@pinpoint/core";
 import {
   assembleCalendar,
   assignDifficulty,
+  buildBorderQuestions,
   buildFlag,
   buildLocate,
   buildPeopleQuestions,
@@ -20,7 +21,7 @@ import {
   type PersonEntry,
 } from "./build.ts";
 import { pageviews } from "./pageviews.ts";
-import { sparql } from "./wikidata.ts";
+import { QLEVER_PREFIXES, sparql } from "./wikidata.ts";
 
 const url = (p: string) => new URL(p, import.meta.url);
 
@@ -88,18 +89,20 @@ const FAME_MIN = 30;
 const PER_COUNTRY = 40;
 // Birth-only, bounded per country — the fast pattern (a births+deaths UNION timed out).
 const peopleQuery = (qid: string) => `
-SELECT ?personLabel ?sl WHERE {
+SELECT ?personLabel ?sl ?desc WHERE {
   ?person wdt:P31 wd:Q5; wdt:P19 ?pl. ?pl wdt:P17 wd:${qid}.
   ?person wikibase:sitelinks ?sl. FILTER(?sl >= ${FAME_MIN})
+  OPTIONAL { ?person schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } ORDER BY DESC(?sl) LIMIT ${PER_COUNTRY}`;
 
 // "Which country is X from?" — people whose SINGLE citizenship is this country (multi-citizenship is
 // ambiguous, so it's excluded). The easy, no-gotcha association (Gandhi→India, Mandela→South Africa).
 const nationalityQuery = (qid: string) => `
-SELECT ?personLabel ?sl WHERE {
+SELECT ?personLabel ?sl ?desc WHERE {
   ?person wdt:P31 wd:Q5; wdt:P27 wd:${qid}; wikibase:sitelinks ?sl. FILTER(?sl >= ${FAME_MIN})
   FILTER NOT EXISTS { ?person wdt:P27 ?other. FILTER(?other != wd:${qid}) }
+  OPTIONAL { ?person schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } ORDER BY DESC(?sl) LIMIT ${PER_COUNTRY}`;
 
@@ -140,19 +143,104 @@ SELECT ?iso ?peakLabel WHERE {
 
 // UNESCO World Heritage Sites (bounded ~1,200) — clean, all inherently notable. Difficulty by fame.
 const Q_WHS = `
-SELECT ?siteLabel ?iso ?sl WHERE {
+SELECT ?siteLabel ?iso ?sl ?desc WHERE {
   ?site wdt:P31 wd:Q9259; wdt:P17 ?c. ?c wdt:P298 ?iso.
   ?site wikibase:sitelinks ?sl. FILTER(?sl >= 25)
+  OPTIONAL { ?site schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
 
 // Dishes with a country of origin (bounded). "Which country did <dish> originate in?"
 const Q_DISH = `
-SELECT ?dishLabel ?iso ?sl WHERE {
+SELECT ?dishLabel ?iso ?sl ?desc WHERE {
   ?dish wdt:P31 wd:Q746549; wdt:P495 ?c. ?c wdt:P298 ?iso.
   ?dish wikibase:sitelinks ?sl. FILTER(?sl >= 15)
+  OPTIONAL { ?dish schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
+
+// --- Topic categories: a distinctive thing that belongs to exactly ONE country -----------------
+// All follow the same shape (label + iso + sitelinks + description). buildUniqueValue drops any
+// value claimed by 2+ countries, so ambiguity is filtered structurally; `sl` drives difficulty and
+// `desc` becomes the reveal fact. Sitelink floors are per-topic recognizability bars.
+
+/** Origin-of-X topics keyed on P495 (country of origin), varying only by the subject class. */
+const originQuery = (classQid: string, minSitelinks: number, limit = 3000) => `
+SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+  ?item wdt:P31/wdt:P279* wd:${classQid}; wdt:P495 ?c.
+  ?c wdt:P298 ?iso.
+  ?item wikibase:sitelinks ?sl. FILTER(?sl >= ${minSitelinks})
+  OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+} LIMIT ${limit}`;
+
+const Q_GENRE = originQuery("Q188451", 15); // music genre (also covers dance styles)
+const Q_SPORT = originQuery("Q349", 12); // sport (incl. martial arts)
+const Q_DRINK = originQuery("Q40050", 12); // drink
+// Clothing + brands run on QLever: both traverse broad subclass trees / the whole company set, which
+// WDQS cannot finish inside its 60s limit (verified: repeated timeouts). QLever answers in ~1-4s.
+// QLever dialect: explicit prefixes, and rdfs:label instead of SERVICE wikibase:label.
+const Q_CLOTHING = `${QLEVER_PREFIXES}
+SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+  ?item wdt:P31/wdt:P279* wd:Q11460; wdt:P495 ?c; wikibase:sitelinks ?sl.
+  FILTER(?sl >= 8)
+  ?c wdt:P298 ?iso.
+  ?item rdfs:label ?itemLabel. FILTER(LANG(?itemLabel) = "en")
+  OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
+} LIMIT 2000`;
+
+// Endemic animals: P183 ("endemic to") already means single-territory, so these are inherently
+// unique — the panda/lemur/kiwi class of clue. High floor: the tail is full of obscure species.
+const Q_ANIMAL = `
+SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+  ?item wdt:P183 ?c. ?c wdt:P298 ?iso.
+  ?item wikibase:sitelinks ?sl. FILTER(?sl >= 40)
+  OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+} LIMIT 3000`;
+
+// Festivals/holidays tied to a country (P17). "Which country celebrates X?"
+const Q_FESTIVAL = `
+SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+  ?item wdt:P31/wdt:P279* wd:Q132241; wdt:P17 ?c.
+  ?c wdt:P298 ?iso.
+  ?item wikibase:sitelinks ?sl. FILTER(?sl >= 15)
+  OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+} LIMIT 2000`;
+
+// Brands/companies by country. Narrow classes + a high sitelink bar keeps this to famous names
+// (IKEA, Nokia, Samsung) and stops the query exploding over the whole business subclass tree.
+const Q_BRAND = `${QLEVER_PREFIXES}
+SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+  VALUES ?type { wd:Q4830453 wd:Q891723 wd:Q6881511 wd:Q18388277 }
+  ?item wdt:P31 ?type; wdt:P17 ?c; wikibase:sitelinks ?sl.
+  FILTER(?sl >= 45)
+  ?c wdt:P298 ?iso.
+  ?item rdfs:label ?itemLabel. FILTER(LANG(?itemLabel) = "en")
+  OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
+} LIMIT 3000`;
+
+// Rivers: uniqueness filtering keeps only rivers whose P17 is a single country, i.e. those flowing
+// entirely within one country (the Danube, shared by 10, is dropped automatically).
+const Q_RIVER = `
+SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+  ?item wdt:P31/wdt:P279* wd:Q4022; wdt:P17 ?c.
+  ?c wdt:P298 ?iso.
+  ?item wikibase:sitelinks ?sl. FILTER(?sl >= 25)
+  OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+} LIMIT 3000`;
+
+// National anthems. Near-total country coverage, but recognizing an anthem by title is genuinely
+// hard, so these are forced into the bonus pool (see BONUS_TYPES) rather than the mandatory three.
+const Q_ANTHEM = `
+SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+  ?c wdt:P31 wd:Q6256; wdt:P298 ?iso; wdt:P85 ?item.
+  ?item wikibase:sitelinks ?sl.
+  OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+} LIMIT 500`;
 
 async function mapIsoSet(): Promise<Set<string>> {
   const fc = JSON.parse(await readFile(url("../../../apps/web/public/countries.geo.json"), "utf8")) as {
@@ -190,6 +278,23 @@ async function main() {
     sparql("dish", Q_DISH),
   ]);
 
+  // Topic categories, fetched sequentially (each is a heavier query; be polite to WDQS). A topic
+  // that times out yields [] and is simply absent from this run rather than failing the whole build.
+  const TOPIC_QUERIES: [string, string, ("wdqs" | "qlever")?][] = [
+    ["genre", Q_GENRE], ["sport", Q_SPORT], ["drink", Q_DRINK], ["animal", Q_ANIMAL],
+    ["festival", Q_FESTIVAL], ["river", Q_RIVER], ["anthem", Q_ANTHEM],
+    ["clothing", Q_CLOTHING, "qlever"], ["brand", Q_BRAND, "qlever"],
+  ];
+  const topicRows: Record<string, Record<string, string>[]> = {};
+  for (const [name, q, engine] of TOPIC_QUERIES) {
+    try {
+      topicRows[name] = (await sparql(`topic-${name}`, q, engine)) as Record<string, string>[];
+    } catch (e) {
+      console.warn(`  topic "${name}" query failed (skipped this run):`, (e as Error).message.slice(0, 80));
+      topicRows[name] = [];
+    }
+  }
+
   // De-dupe country meta to one record per ISO (that exists on our map).
   const metaMap = new Map<string, CountryMeta>();
   for (const r of baseRows) {
@@ -209,6 +314,22 @@ async function main() {
   }
   const countries = [...metaMap.values()];
   const nameOf = (iso: string) => metaMap.get(iso)?.name ?? iso;
+  /** Topic rows -> entity entries, with SITELINKS standing in for fame and the description as fact. */
+  const topicEntries = (name: string): PersonEntry[] =>
+    (topicRows[name] ?? [])
+      .filter((r) => r.itemLabel && r.iso && allowed.has(r.iso) && !/^Q\d+$/.test(r.itemLabel))
+      .map((r) => ({
+        iso: r.iso!,
+        person: r.itemLabel!,
+        views: Number(r.sl ?? 0),
+        sitelinks: Number(r.sl ?? 0),
+        fact: r.desc,
+      }));
+
+  // Land-border graph (ships with the app) — powers the deduction-style "border" questions offline.
+  const adjacency = JSON.parse(
+    await readFile(url("../../../apps/web/public/adjacency.json"), "utf8"),
+  ) as Record<string, string[]>;
 
   // Country recognizability from POPULATION (log-normalized). Country-article pageviews do NOT
   // discriminate (Serbia 2.6M ≈ Uzbekistan 2.7M — topic curiosity, not flag/geo fame) and sitelinks
@@ -237,10 +358,10 @@ async function main() {
     try {
       const rows = await sparql(`people-${qid}`, peopleQuery(qid));
       if (++progressed % 40 === 0) console.log(`  people SPARQL: ${progressed}/${targets.length}`);
-      return rows.slice(0, PER_COUNTRY).map((r) => ({ iso, person: r.personLabel!, sitelinks: Number(r.sl ?? 0) })); // top-20 documented/country
+      return rows.slice(0, PER_COUNTRY).map((r) => ({ iso, person: r.personLabel!, sitelinks: Number(r.sl ?? 0), fact: r.desc })); // top-20 documented/country
     } catch (e) {
       console.warn(`  people ${iso} failed: ${(e as Error).message}`);
-      return [] as { iso: string; person: string; sitelinks: number }[];
+      return [] as { iso: string; person: string; sitelinks: number; fact?: string }[];
     }
   });
   const peopleCandidates = perCountry.flat();
@@ -248,7 +369,7 @@ async function main() {
   let pvDone = 0;
   const birthEntries: PersonEntry[] = await mapPool(peopleCandidates, 8, async (p) => {
     if (++pvDone % 500 === 0) console.log(`  people pageviews: ${pvDone}/${peopleCandidates.length}`);
-    return { iso: p.iso, person: p.person, sitelinks: p.sitelinks, views: await pageviews(p.person) };
+    return { iso: p.iso, person: p.person, sitelinks: p.sitelinks, fact: p.fact, views: await pageviews(p.person) };
   });
 
   // Nationality ("which country is X from?") — single-citizenship people, per-country, then pageviews.
@@ -257,10 +378,10 @@ async function main() {
     try {
       const rows = await sparql(`nationality-${qid}`, nationalityQuery(qid));
       if (++progressed % 40 === 0) console.log(`  nationality SPARQL: ${progressed}/${targets.length}`);
-      return rows.slice(0, PER_COUNTRY).map((r) => ({ iso, person: r.personLabel!, sitelinks: Number(r.sl ?? 0) }));
+      return rows.slice(0, PER_COUNTRY).map((r) => ({ iso, person: r.personLabel!, sitelinks: Number(r.sl ?? 0), fact: r.desc }));
     } catch (e) {
       console.warn(`  nationality ${iso} failed: ${(e as Error).message}`);
-      return [] as { iso: string; person: string; sitelinks: number }[];
+      return [] as { iso: string; person: string; sitelinks: number; fact?: string }[];
     }
   });
   const natCandidates = perCountryNat.flat();
@@ -269,6 +390,7 @@ async function main() {
     iso: p.iso,
     person: p.person,
     sitelinks: p.sitelinks,
+    fact: p.fact,
     views: await pageviews(p.person),
   }));
 
@@ -276,11 +398,13 @@ async function main() {
   const landmarkEntries: PersonEntry[] = await mapPool(whsRows, 8, async (r) => ({
     iso: r.iso!,
     person: r.siteLabel!,
+    fact: r.desc,
     views: await pageviews(r.siteLabel!),
   }));
   const dishEntries: PersonEntry[] = await mapPool(dishRows, 8, async (r) => ({
     iso: r.iso!,
     person: r.dishLabel!,
+    fact: r.desc,
     views: await pageviews(r.dishLabel!),
   }));
 
@@ -293,6 +417,7 @@ async function main() {
   const auto = [
     ...buildLocate(countries),
     ...buildFlag(countries),
+    ...buildBorderQuestions(adjacency, allowed, nameOf),
     ...buildUniqueValue(
       capRows.map((r) => ({ iso: r.iso!, value: r.capitalLabel! })),
       allowed,
@@ -346,6 +471,22 @@ async function main() {
     // Landmarks/dishes naturally get far fewer views than people -> much lower floor (35k).
     ...buildPeopleQuestions(landmarkEntries, "landmark", (n) => `In which country is ${n}?`, nameOf, 35_000, 1_000_000),
     ...buildPeopleQuestions(dishEntries, "dish", (n) => `Which country did ${n} originate in?`, nameOf, 35_000, 1_000_000),
+    // Topic categories. These reuse the entity pipeline (ambiguous-name drop, leak filter, fame ->
+    // difficulty) but score fame by SITELINKS rather than pageviews — no per-item fetch for
+    // thousands of items, and sitelinks track "notable thing" well for objects (vs. people, where
+    // they underrate athletes). Floors mirror each query's bar; ceilings mark "world famous".
+    ...buildPeopleQuestions(
+      topicEntries("genre"),
+      "genre", (n) => `Which country did ${n} originate in?`, nameOf, 18, 90,
+    ),
+    ...buildPeopleQuestions(topicEntries("sport"), "sport", (n) => `Which country did ${n} originate in?`, nameOf, 14, 80),
+    ...buildPeopleQuestions(topicEntries("drink"), "drink", (n) => `Which country did ${n} originate in?`, nameOf, 14, 90),
+    ...buildPeopleQuestions(topicEntries("clothing"), "clothing", (n) => `${n} is traditional dress in which country?`, nameOf, 12, 70),
+    ...buildPeopleQuestions(topicEntries("animal"), "animal", (n) => `The ${n.toLowerCase()} is found only in which country?`, nameOf, 45, 140),
+    ...buildPeopleQuestions(topicEntries("festival"), "festival", (n) => `Which country is ${n} celebrated in?`, nameOf, 18, 90),
+    ...buildPeopleQuestions(topicEntries("brand"), "brand", (n) => `Which country is ${n} from?`, nameOf, 60, 170),
+    ...buildPeopleQuestions(topicEntries("river"), "river", (n) => `The ${n} flows through which country?`, nameOf, 28, 110),
+    ...buildPeopleQuestions(topicEntries("anthem"), "anthem", (n) => `"${n}" is the national anthem of which country?`, nameOf, 3, 60),
   ];
 
   const autoQs = assignDifficulty(auto, obscurity);
@@ -356,7 +497,9 @@ async function main() {
   );
 
   // Obscure, near-unanswerable types move OUT of the mandatory 3 into the bonus (unlocked on 3/3).
-  const BONUS_TYPES = new Set(["calling-code", "tld", "highest-point", "currency"]);
+  // Anthems join these: near-total country coverage, but recognizing one by title is too hard to
+  // put in the mandatory three (player request) — perfect as the unlocked-on-3/3 bonus.
+  const BONUS_TYPES = new Set(["calling-code", "tld", "highest-point", "currency", "anthem"]);
   const mandatory = all.filter((q) => !BONUS_TYPES.has(q.clueType));
   const bonusPool = all.filter((q) => BONUS_TYPES.has(q.clueType));
 
@@ -370,7 +513,7 @@ async function main() {
   for (const q of mandatory) split[q.difficulty][isPerson(q.clueType) ? 0 : 1]++;
   console.log("person / non-person per tier:", { easy: split.easy, medium: split.medium, hard: split.hard });
 
-  const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 400, 45, 0.28, bonusPool);
+  const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 655, 45, 0.28, bonusPool);
 
   await writeFile(url("../../../data/questions.json"), JSON.stringify(calendar));
   await writeFile(url("../../../apps/web/public/questions.json"), JSON.stringify(calendar));

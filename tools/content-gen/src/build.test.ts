@@ -184,28 +184,35 @@ test("assembleCalendar: at most one person question, and never three of any cate
   }
 });
 
-test("assembleCalendar balances person questions into the scarce-non-person tier to maximize days", () => {
+test("assembleCalendar rotates the person question across slots, including person-free days", () => {
   const mk = (id: string, iso: string, difficulty: Question["difficulty"], clueType: Question["clueType"]): Question => ({
     id, clueType, difficulty, prompt: id, answerIso: iso, acceptedIso: [iso],
   });
-  // Non-person is the scarce resource: easy has 2 (locate), medium 5 (capital), hard 2 (flag);
-  // person (nationality) is abundant in easy & hard. Max days with ≤1 person/day = 4, but only if
-  // the person question is spent in whichever tier's non-person is scarcest that day.
-  const pool: Question[] = [
-    ...[1, 2, 3, 4, 5].map((i) => mk(`ep${i}`, `EP${i}`, "easy", "nationality")),
-    mk("en1", "EN1", "easy", "locate"), mk("en2", "EN2", "easy", "locate"),
-    ...[1, 2, 3, 4, 5].map((i) => mk(`mn${i}`, `MN${i}`, "medium", "capital")),
-    mk("mp1", "MP1", "medium", "nationality"),
-    mk("hn1", "HN1", "hard", "flag"), mk("hn2", "HN2", "hard", "flag"),
-    ...[1, 2, 3, 4, 5].map((i) => mk(`hp${i}`, `HP${i}`, "hard", "nationality")),
-  ];
-  const cal = assembleCalendar(pool, "2026-08-01", 10, 45, 9);
-  assert.equal(cal.puzzles.length, 4, "person-placement balancing should reach the 4-day maximum");
-  for (const p of cal.puzzles) {
-    const persons = p.questions.filter((q) => q.clueType === "nationality").length;
-    assert.ok(persons <= 1, "at most one person question per day");
-    assert.equal(new Set(p.questions.map((q) => q.answerIso)).size, 3, "distinct countries per day");
+  // Plenty of both kinds in every tier, so placement is driven by the rotation, not by scarcity.
+  const nonPersonType = { easy: "locate", medium: "capital", hard: "flag" } as const;
+  const pool: Question[] = [];
+  for (const d of ["easy", "medium", "hard"] as const) {
+    for (let i = 0; i < 20; i++) {
+      pool.push(mk(`${d}-p${i}`, `${d.toUpperCase()}P${i}`, d, "nationality"));
+      pool.push(mk(`${d}-n${i}`, `${d.toUpperCase()}N${i}`, d, nonPersonType[d]));
+    }
   }
+  const cal = assembleCalendar(pool, "2026-08-01", 12, 0, 9);
+  assert.ok(cal.puzzles.length >= 8, `expected a full-ish calendar, got ${cal.puzzles.length}`);
+
+  const slotOf = (p: (typeof cal.puzzles)[number]) =>
+    p.questions.findIndex((q) => q.clueType === "nationality"); // -1 when the day has no person Q
+  const slots = cal.puzzles.map(slotOf);
+  // Never more than one person question per day (the redundancy rule still holds).
+  for (const p of cal.puzzles) {
+    assert.ok(p.questions.filter((q) => q.clueType === "nationality").length <= 1);
+  }
+  // The whole point of the rotation: person questions must not pile into one slot, and some days
+  // must have none at all. (Before this, EVERY day had one and 72% of them sat in the hard slot.)
+  assert.ok(slots.includes(-1), "expected some person-free days");
+  assert.ok(new Set(slots.filter((s) => s >= 0)).size >= 2, "person questions should span >1 slot");
+  const hardRun = slots.reduce((m, s, i) => (s === 2 && slots[i - 1] === 2 ? m + 1 : m), 0);
+  assert.ok(hardRun < slots.length / 2, "person questions must not monopolise the hard slot");
 });
 
 test("assembleCalendar allows two of a non-person category (e.g. easy + hard Locate) when needed", () => {

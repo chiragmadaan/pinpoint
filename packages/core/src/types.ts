@@ -24,6 +24,14 @@ export type ClueType =
   | "dish" // "Which country did <dish> originate in?"
   | "border" // "Country bordering both X and Y"
   | "outline" // "Which country has this outline?"
+  | "animal" // "The lemur is found only in which country?"
+  | "genre" // "Which country did reggae originate in?" (music genres + dances)
+  | "sport" // "Which country did taekwondo originate in?"
+  | "drink" // "Which country did sake originate in?"
+  | "festival" // "Which country celebrates Oktoberfest?"
+  | "clothing" // "The kimono is traditional dress in which country?"
+  | "brand" // "Which country is IKEA from?"
+  | "river" // "The Loire flows through which country?" (single-country rivers only)
   | "calling-code" // "Which country's dialling code is +81?"
   | "tld" // "Which country uses the internet domain .jp?"
   | "highest-point" // "Kilimanjaro is the highest point of which country?"
@@ -50,6 +58,13 @@ export interface Question {
    * clue may accept several (e.g. Ganga delta -> ["IND", "BGD"]). Content-gen must populate this.
    */
   acceptedIso: Iso3[];
+  /**
+   * One-line "did you know" shown on the reveal, for correct AND incorrect guesses — turns a miss
+   * into a small learning moment (e.g. "Sheikh Mujibur Rahman — founding president of Bangladesh").
+   * Sourced from the subject's Wikidata description; never shown before the answer, so it may
+   * safely mention the answer country.
+   */
+  fact?: string;
   /** Provenance for auditing/regeneration (e.g. Wikidata Q-ids used). */
   source?: string;
   /**

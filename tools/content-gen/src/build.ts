@@ -14,6 +14,8 @@ export interface CountryMeta {
 export interface ValueRow {
   iso: string;
   value: string;
+  /** Optional one-liner about the subject, shown on the reveal (see Question.fact). */
+  fact?: string;
 }
 
 /** A question before difficulty is assigned. `hardness` (0=easy..1=hard) overrides the default
@@ -83,6 +85,21 @@ export function canonicalizeLanguage(label: string): string {
   return synonyms[s.toLowerCase()] ?? s;
 }
 
+/** Wikidata descriptions that carry no information for a player — never worth showing as a fact. */
+const USELESS_DESC = /^(human|wikimedia (list|disambiguation)|country|sovereign state|taxon|scientific article|given name|family name|surname)\b/i;
+
+/**
+ * Format the reveal one-liner: "<subject> — <description>." Returns undefined when the description
+ * is missing or contentless, so the UI simply shows no fact rather than something useless.
+ */
+export function formatFact(subject: string, desc: string | undefined): string | undefined {
+  const d = (desc ?? "").trim().replace(/\s+/g, " ");
+  if (d.length < 8 || d.length > 160) return undefined;
+  if (USELESS_DESC.test(d)) return undefined;
+  const body = d.charAt(0).toUpperCase() + d.slice(1);
+  return `${subject} — ${body}${/[.!?]$/.test(body) ? "" : "."}`;
+}
+
 /** Flag emoji from an ISO 3166-1 alpha-2 code, e.g. "FR" -> 🇫🇷. */
 export function flagEmoji(alpha2: string | undefined): string | undefined {
   if (!alpha2 || alpha2.length !== 2) return undefined;
@@ -150,11 +167,13 @@ export function buildUniqueValue(
   nameOf?: (iso: string) => string,
 ): Candidate[] {
   const byValue = new Map<string, Set<string>>();
+  const factByValue = new Map<string, string>();
   for (const r of rows) {
     if (!allowedIso.has(r.iso)) continue;
     let set = byValue.get(r.value);
     if (!set) byValue.set(r.value, (set = new Set()));
     set.add(r.iso);
+    if (r.fact && !factByValue.has(r.value)) factByValue.set(r.value, r.fact);
   }
   const out: Candidate[] = [];
   for (const [value, isos] of byValue) {
@@ -167,7 +186,80 @@ export function buildUniqueValue(
       prompt: prompt(value),
       answerIso: iso,
       acceptedIso: [iso],
+      fact: formatFact(value, factByValue.get(value)),
       source: `wikidata:${clueType}`,
+    });
+  }
+  return out;
+}
+
+/** Country names that read as "the X" in a sentence ("borders the Netherlands", not "borders Netherlands"). */
+const NEEDS_ARTICLE = /^(United |Republic of|Democratic Republic|Central African|Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Czech Republic|Dominican Republic|Ivory Coast|Falkland|Marshall|Solomon|Isle of Man|Vatican)/;
+
+/** Prefix "the" where English needs it, so generated prompts read naturally. */
+export function withArticle(name: string): string {
+  return NEEDS_ARTICLE.test(name) ? `the ${name}` : name;
+}
+
+/**
+ * Border questions from the adjacency graph — the one clue type a player can REASON to rather than
+ * recall ("borders both Spain and France" -> Andorra). Two shapes, both requiring a unique answer:
+ *   - a neighbour PAIR that exactly one country touches
+ *   - a country with exactly one neighbour ("the only country bordering X")
+ * Needs no network: adjacency ships with the app.
+ */
+export function buildBorderQuestions(
+  adjacency: Record<string, string[]>,
+  allowedIso: Set<string>,
+  nameOf: (iso: string) => string,
+): Candidate[] {
+  const out: Candidate[] = [];
+  const byPair = new Map<string, string[]>();
+  for (const [iso, neighbours] of Object.entries(adjacency)) {
+    const ns = [...new Set(neighbours)].sort();
+    for (let i = 0; i < ns.length; i++) {
+      for (let j = i + 1; j < ns.length; j++) {
+        const key = `${ns[i]}|${ns[j]}`;
+        let owners = byPair.get(key);
+        if (!owners) byPair.set(key, (owners = []));
+        owners.push(iso);
+      }
+    }
+  }
+  for (const [key, owners] of byPair) {
+    if (owners.length !== 1) continue; // several countries touch this pair -> ambiguous
+    const iso = owners[0]!;
+    const [a, b] = key.split("|") as [string, string];
+    // Both neighbours must be real, named, answerable countries — and never name the answer itself.
+    if (!allowedIso.has(iso) || !allowedIso.has(a) || !allowedIso.has(b)) continue;
+    const [na, nb] = [nameOf(a), nameOf(b)];
+    if (!na || !nb || na === a || nb === b) continue; // no display name -> skip
+    if (leaksCountryName(`${na} ${nb}`, nameOf(iso))) continue; // e.g. "Congo" pair naming the answer
+    out.push({
+      id: `border-${a}-${b}-${iso}`,
+      clueType: "border",
+      prompt: `Which country borders both ${withArticle(na)} and ${withArticle(nb)}?`,
+      answerIso: iso,
+      acceptedIso: [iso],
+      source: "adjacency:pair",
+    });
+  }
+  // "Only country bordering X" — unique when X has exactly one land neighbour.
+  for (const [iso, neighbours] of Object.entries(adjacency)) {
+    const ns = [...new Set(neighbours)];
+    if (ns.length !== 1) continue;
+    const only = ns[0]!;
+    if (!allowedIso.has(iso) || !allowedIso.has(only)) continue;
+    const name = nameOf(iso);
+    if (!name || name === iso) continue;
+    if (leaksCountryName(name, nameOf(only))) continue; // clue names the answer -> drop
+    out.push({
+      id: `border-only-${iso}-${only}`,
+      clueType: "border",
+      prompt: `Which is the only country that shares a land border with ${withArticle(name)}?`,
+      answerIso: only,
+      acceptedIso: [only],
+      source: "adjacency:sole",
     });
   }
   return out;
@@ -203,6 +295,9 @@ const CLUE_WEIGHT: Record<string, number> = {
   currency: 0.45,
   language: 0.45,
   "highest-point": 0.55,
+  // Deducible from the map rather than recalled, so easier than its obscurity implies.
+  border: 0.25,
+  anthem: 0.7, // recognizing an anthem by title is hard -> bonus-tier
 };
 
 /**
@@ -214,6 +309,7 @@ export interface PersonEntry {
   person: string;
   views: number; // annual en.wikipedia pageviews (recognizability + difficulty)
   sitelinks?: number; // Wikipedia language count — gates the easy tier (athletes score low here)
+  fact?: string; // raw Wikidata description, formatted into Question.fact on the reveal
 }
 
 export function buildPeopleQuestions(
@@ -249,6 +345,7 @@ export function buildPeopleQuestions(
       prompt: prompt(person),
       answerIso: e.iso,
       acceptedIso: [e.iso],
+      fact: formatFact(person, e.fact),
       source: `wikidata:${clueType}`,
       hardness: Math.max(0.1, 1 - fame * 0.85), // famous -> easy, obscure -> hard
       sitelinks: e.sitelinks, // carried for the easy-tier gate
@@ -417,16 +514,24 @@ export function assembleCalendar(
   const puzzles: DailyPuzzle[] = [];
   let dt = parseKey(startDateKey);
   for (let day = 0; day < maxDays; day++) {
-    // Spend the day's single person question in whichever tier's non-person supply is scarcest, so
-    // the abundant person pool covers for it and scarce non-person questions stretch across more days.
-    // Fall through the other tiers, then a no-person day; stop only when nothing fills.
-    const order = [...diffs].sort((a, b) => nonPersonLeft(byDiff[a]) - nonPersonLeft(byDiff[b]));
+    // ROTATE which slot (if any) spends the day's one person question — including person-FREE days.
+    // Always sending it to the scarcest tier maximised calendar length but made the hard slot a
+    // "where was X born?" on 72% of days (138 in a row); rotation trades a little length for variety.
+    // Fallbacks are ordered by scarcest-non-person-first, so a day is still never left unfilled.
+    const rotation: (Diff | null)[] = [null, "easy", "medium", "hard"];
+    const preferred = rotation[day % rotation.length]!;
+    const fallbacks = rotation
+      .filter((o) => o !== preferred)
+      .sort((a, b) => {
+        if (a === null) return 1; // a person-free day burns three non-person questions -> try last
+        if (b === null) return -1;
+        return nonPersonLeft(byDiff[a]) - nonPersonLeft(byDiff[b]);
+      });
     let picks: Record<Diff, Question> | null = null;
-    for (const pt of order) {
+    for (const pt of [preferred, ...fallbacks]) {
       picks = tryDay(pt, day);
       if (picks) break;
     }
-    if (!picks) picks = tryDay(null, day);
     if (!picks) break; // no fillable arrangement -> calendar ends
 
     for (const diff of diffs) {

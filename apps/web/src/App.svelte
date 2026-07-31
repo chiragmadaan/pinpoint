@@ -473,6 +473,9 @@
           {EMOJI.wrong} Not quite — the answer was {answerName}. {#if lastResult.guessIso}You picked {guessName}.{/if}
         {/if}
       </p>
+      {#if q.fact}
+        <p class="fact">💡 {q.fact}</p>
+      {/if}
       <button on:click={onNext}>{nextLabel}</button>
     {:else}
       <button disabled={!selected} on:click={onGuess}>Guess</button>
@@ -550,6 +553,11 @@
     animation: toast-in 0.35s ease; }
   .toast-emoji { font-size: 1.5rem; }
   @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  .fact {
+    margin: 0.4rem 0 0.9rem; padding: 0.6rem 0.75rem; border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06); border-left: 3px solid #f2c14e;
+    font-size: 0.92rem; line-height: 1.4; opacity: 0.92; text-align: left;
+  }
   .welcome { text-align: center; padding: 2rem 1rem; }
   .welcome h2 { font-size: 1.6rem; margin: 0; }
   .welcome-sub { opacity: 0.8; margin: 0.5rem 0 0; }

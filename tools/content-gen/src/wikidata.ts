@@ -12,6 +12,22 @@ import { promisify } from "node:util";
 
 const execFileP = promisify(execFile);
 const ENDPOINT = "https://query.wikidata.org/sparql";
+/**
+ * QLever — an alternative public SPARQL endpoint over the same Wikidata dump, far faster on the
+ * broad `P31/P279*` subclass traversals that make WDQS hit its 60s server-side timeout (the brand /
+ * clothing queries fail on WDQS and return in ~1-4s here). Differences to be aware of:
+ *   - prefixes are NOT auto-registered -> prepend QLEVER_PREFIXES
+ *   - no `SERVICE wikibase:label` -> select rdfs:label explicitly with a LANG filter
+ */
+const QLEVER_ENDPOINT = "https://qlever.dev/api/wikidata";
+
+export const QLEVER_PREFIXES = [
+  "PREFIX wd: <http://www.wikidata.org/entity/>",
+  "PREFIX wdt: <http://www.wikidata.org/prop/direct/>",
+  "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>",
+  "PREFIX schema: <http://schema.org/>",
+  "PREFIX wikibase: <http://wikiba.se/ontology#>",
+].join("\n");
 const UA = "pinpoint-content-gen/0.1 (https://pinpoint.example; dev)";
 const CACHE_DIR = new URL("../.cache/", import.meta.url);
 
@@ -64,19 +80,39 @@ interface CacheShape {
   rows: Row[];
 }
 
-/** Run a named SPARQL query, cached to tools/content-gen/.cache/<name>.json (keyed by query text). */
-export async function sparql(name: string, query: string): Promise<Row[]> {
+/**
+ * Run a named SPARQL query, cached to tools/content-gen/.cache/<name>.json (keyed by query text).
+ * `engine: "qlever"` routes to QLever for queries WDQS can't finish (see QLEVER_ENDPOINT).
+ */
+export async function sparql(name: string, query: string, engine: "wdqs" | "qlever" = "wdqs"): Promise<Row[]> {
   const cacheFile = new URL(`${name}.json`, CACHE_DIR);
+  let stale: Row[] | null = null; // cached rows from a PREVIOUS version of this query
   if (existsSync(cacheFile)) {
     try {
       const cached = JSON.parse(await readFile(cacheFile, "utf8")) as Partial<CacheShape>;
-      if (cached && cached.query === query && Array.isArray(cached.rows)) return cached.rows;
+      if (cached && Array.isArray(cached.rows)) {
+        if (cached.query === query) return cached.rows; // exact hit
+        stale = cached.rows; // query changed -> refetch, but keep this as a fallback
+      }
     } catch {
       /* fall through to refetch */
     }
   }
-  const url = `${ENDPOINT}?format=json&query=${encodeURIComponent(query)}`;
-  const rows = flatten((await fetchJson(url)) as never);
+  const base = engine === "qlever" ? QLEVER_ENDPOINT : ENDPOINT;
+  const url = `${base}?format=json&query=${encodeURIComponent(query)}`;
+  let rows: Row[];
+  try {
+    rows = flatten((await fetchJson(url)) as never);
+  } catch (e) {
+    // WDQS is flaky under load (timeouts / rate limits). Editing a query must not be able to break
+    // the whole build: fall back to the previous cached rows for this name and carry on degraded —
+    // the run just misses whatever the edit added (e.g. a new field), instead of producing nothing.
+    if (stale) {
+      console.warn(`  sparql "${name}" refetch failed — reusing stale cache (${stale.length} rows): ${(e as Error).message.slice(0, 70)}`);
+      return stale;
+    }
+    throw e;
+  }
   await mkdir(CACHE_DIR, { recursive: true });
   await writeFile(cacheFile, JSON.stringify({ query, rows } satisfies CacheShape));
   return rows;
