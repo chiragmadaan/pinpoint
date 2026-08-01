@@ -57,6 +57,25 @@ async function fetchText(url: string): Promise<string> {
   return res.text();
 }
 
+/**
+ * Fetch returning the HTTP status alongside the body, so callers can tell "this genuinely does not
+ * exist" (404 — safe to cache as a permanent negative) from "the network hiccupped" (retry later).
+ * Caching the two the same way silently turned transient blips into permanent missing data.
+ */
+export async function fetchWithStatus(url: string): Promise<{ status: number; body: string }> {
+  if (process.env.PINPOINT_FETCH === "curl") {
+    const { stdout } = await execFileP(
+      "curl",
+      ["-sL", "--max-time", "60", "-w", "\n%{http_code}", "-H", `User-Agent: ${UA}`, url],
+      { maxBuffer: 64 * 1024 * 1024 },
+    );
+    const cut = stdout.lastIndexOf("\n");
+    return { status: Number(stdout.slice(cut + 1).trim()) || 0, body: stdout.slice(0, Math.max(0, cut)) };
+  }
+  const res = await fetch(url, { headers: { "User-Agent": UA } });
+  return { status: res.status, body: await res.text() };
+}
+
 /** Fetch + parse with retry/back-off. WDQS throttles bursts with 429/HTML pages and empty bodies. */
 export async function fetchJson(url: string): Promise<unknown> {
   let lastErr: unknown;

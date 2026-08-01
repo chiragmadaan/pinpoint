@@ -12,7 +12,7 @@
 
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { fetchJson } from "./wikidata.ts";
+import { fetchWithStatus } from "./wikidata.ts";
 
 const ENDPOINT = "https://en.wikipedia.org/api/rest_v1/page/summary";
 const CACHE_DIR = new URL("../.cache/extract/", import.meta.url);
@@ -38,6 +38,27 @@ export interface FactContext {
 }
 
 /**
+ * Does this sentence merely restate the reveal? Naming the answer country is not itself
+ * disqualifying — "The Kolyma is a river in northeastern Siberia, Russia" names Russia but still
+ * teaches "northeastern Siberia". What matters is whether anything SPECIFIC survives once you
+ * discount the subject and the answer: another proper noun, or a number. A flat length cut got this
+ * wrong in both directions, rejecting informative river/currency sentences.
+ */
+function restatesAnswer(s: string, subject: string, answerName: string): boolean {
+  const esc = answerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!new RegExp(`\\b${esc}\\b`, "i").test(s)) return false; // doesn't mention the answer at all
+  if (s.length >= 95) return false; // long enough to be carrying real detail
+  const known = new Set(
+    [...subject.split(/\s+/), ...answerName.split(/\s+/)].map((w) => w.replace(/[^A-Za-z]/g, "").toLowerCase()),
+  );
+  const hasNumber = /\d/.test(s);
+  const extraProperNoun = (s.match(/\b[A-Z][a-z]{2,}/g) ?? [])
+    .slice(1) // the sentence's first word is capitalised by convention
+    .some((w) => !known.has(w.toLowerCase()));
+  return !hasNumber && !extraProperNoun; // nothing specific beyond subject + answer -> restatement
+}
+
+/**
  * Choose the first sentence that actually teaches the player something.
  *
  * Skips sentences that merely restate what the reveal already showed — the big one being
@@ -52,27 +73,36 @@ export function pickFact(extract: string, ctx: FactContext): string | null {
     // Resolve a leading back-reference so the sentence stands alone:
     //   "It is the country's ninth-most populous city" -> "<subject> is the country's ninth-most ..."
     //   "The city has an estimated population of 8 million" -> "Baghdad has an estimated ..."
-    const s = raw
+    let s = raw
       .replace(/^It (is|was|has|had|lies|sits|covers|contains|remains|serves)\b/, `${subject} $1`)
       .replace(
         /^The (?:city|town|country|island|river|region|area|nation|state) (is|was|has|had|lies|sits|covers)\b/,
         `${subject} $1`,
       );
+    // Subjects are often lowercase common nouns (currencies, genres: "balboa", "bachata"), so
+    // substituting one at the start yields "balboa is subdivided into..." — capitalise it.
+    s = s.charAt(0).toUpperCase() + s.slice(1);
     if (s.length < 40 || s.length > 300) continue;
     if (/^\s*(It|They|These|This|He|She|Its|Their)\b/.test(s)) continue; // unresolved pronoun
     if (/\bis the capital\b/i.test(s) && !subjectIsAnswer) continue; // the clue already said so
-    if (!subjectIsAnswer && answerName) {
-      const esc = answerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // A SHORT sentence that names the answer is nearly always just restating it; a longer one
-      // carries real detail alongside the country name.
-      if (new RegExp(`\\b${esc}\\b`, "i").test(s) && s.length < 95) continue;
-    }
+    if (!subjectIsAnswer && answerName && restatesAnswer(s, subject, answerName)) continue;
     return s;
   }
   return null;
 }
 
-/** Raw Wikipedia extract for an article title, cached. null when missing/disambiguation. */
+/**
+ * Raw Wikipedia extract for an article title, cached. null when the article is missing or is a
+ * disambiguation page.
+ *
+ * Pass the real article title (from the Wikidata enwiki sitelink), not the entity label: labels are
+ * frequently ambiguous, and the summary endpoint then serves a disambiguation stub. "Kan" is
+ * "Kan or KAN may refer to:" while the river lives at "Kan (river)" — that mismatch was silently
+ * costing ~11% of facts.
+ *
+ * Only genuine 404s and disambiguation pages are cached as negatives; a network error returns null
+ * WITHOUT caching, so a later run retries instead of the blip becoming permanent missing data.
+ */
 export async function extract(title: string): Promise<string | null> {
   const cacheFile = new URL(safeFile(title), CACHE_DIR);
   if (existsSync(cacheFile)) {
@@ -84,12 +114,16 @@ export async function extract(title: string): Promise<string | null> {
   }
   let out: string | null = null;
   try {
-    const json = (await fetchJson(
+    const { status, body } = await fetchWithStatus(
       `${ENDPOINT}/${encodeURIComponent(title.replace(/ /g, "_"))}`,
-    )) as { extract?: string; type?: string };
-    if (json.type !== "disambiguation" && json.extract) out = json.extract;
+    );
+    if (status !== 200 && status !== 404) return null; // transient -> don't poison the cache
+    if (status === 200) {
+      const json = JSON.parse(body) as { extract?: string; type?: string };
+      if (json.type !== "disambiguation" && json.extract) out = json.extract;
+    }
   } catch {
-    out = null; // 404 / transient -> no fact rather than a bad one
+    return null; // parse/transport failure -> retry on a later run
   }
   await mkdir(CACHE_DIR, { recursive: true });
   await writeFile(cacheFile, JSON.stringify(out));

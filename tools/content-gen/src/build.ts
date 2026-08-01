@@ -16,6 +16,9 @@ export interface ValueRow {
   value: string;
   /** Optional one-liner about the subject, shown on the reveal (see Question.fact). */
   fact?: string;
+  /** Exact English Wikipedia article title (from the Wikidata sitelink). Differs from the label
+   *  whenever the label is ambiguous ("Kan" -> "Kan (river)"); used for the fact lookup. */
+  article?: string;
 }
 
 /** A question before difficulty is assigned. `hardness` (0=easy..1=hard) overrides the default
@@ -29,6 +32,8 @@ export type Candidate = Omit<Question, "difficulty"> & {
    *  can be enriched from Wikipedia for only the questions that actually made the calendar, then
    *  stripped before write. Absent for country-attribute clues, whose subject IS the answer. */
   subject?: string;
+  /** Wikipedia article title to look the fact up under; falls back to `subject`. Transient. */
+  article?: string;
 };
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -114,7 +119,9 @@ export function formatFact(subject: string, desc: string | undefined): string | 
   if (d.length < 12 || d.length > 160) return undefined;
   if (USELESS_DESC.test(d) || RESTATES_ANSWER.test(d)) return undefined;
   const body = d.charAt(0).toUpperCase() + d.slice(1);
-  return `${subject} — ${body}${/[.!?]$/.test(body) ? "" : "."}`;
+  // Subjects are often lowercase common nouns (genres, currencies: "bachata", "balboa").
+  const head = subject.charAt(0).toUpperCase() + subject.slice(1);
+  return `${head} — ${body}${/[.!?]$/.test(body) ? "" : "."}`;
 }
 
 /** Flag emoji from an ISO 3166-1 alpha-2 code, e.g. "FR" -> 🇫🇷. */
@@ -187,12 +194,14 @@ export function buildUniqueValue(
 ): Candidate[] {
   const byValue = new Map<string, Set<string>>();
   const factByValue = new Map<string, string>();
+  const articleByValue = new Map<string, string>();
   for (const r of rows) {
     if (!allowedIso.has(r.iso)) continue;
     let set = byValue.get(r.value);
     if (!set) byValue.set(r.value, (set = new Set()));
     set.add(r.iso);
     if (r.fact && !factByValue.has(r.value)) factByValue.set(r.value, r.fact);
+    if (r.article && !articleByValue.has(r.value)) articleByValue.set(r.value, r.article);
   }
   const out: Candidate[] = [];
   for (const [value, isos] of byValue) {
@@ -207,6 +216,7 @@ export function buildUniqueValue(
       acceptedIso: [iso],
       fact: formatFact(value, factByValue.get(value)),
       subject: value,
+      article: articleByValue.get(value),
       source: `wikidata:${clueType}`,
     });
   }
@@ -332,6 +342,7 @@ export interface PersonEntry {
   views: number; // annual en.wikipedia pageviews (recognizability + difficulty)
   sitelinks?: number; // Wikipedia language count — gates the easy tier (athletes score low here)
   fact?: string; // raw Wikidata description, formatted into Question.fact on the reveal
+  article?: string; // exact enwiki article title (labels are often ambiguous)
 }
 
 export function buildPeopleQuestions(
@@ -369,6 +380,7 @@ export function buildPeopleQuestions(
       acceptedIso: [e.iso],
       fact: formatFact(person, e.fact),
       subject: person,
+      article: e.article,
       source: `wikidata:${clueType}`,
       hardness: Math.max(0.1, 1 - fame * 0.85), // famous -> easy, obscure -> hard
       sitelinks: e.sitelinks, // carried for the easy-tier gate

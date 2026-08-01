@@ -109,21 +109,24 @@ SELECT ?personLabel ?sl ?desc WHERE {
 } ORDER BY DESC(?sl) LIMIT ${PER_COUNTRY}`;
 
 const Q_CAPITAL = `
-SELECT ?iso ?capitalLabel WHERE {
+SELECT ?iso ?capitalLabel ?enwiki WHERE {
   ?country wdt:P31 wd:Q6256; wdt:P298 ?iso; wdt:P36 ?capital.
   ?capital rdfs:label ?capitalLabel. FILTER(LANG(?capitalLabel) = "en")
+  OPTIONAL { ?wpArticle schema:about ?capital; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
 }`;
 
 const Q_CURRENCY = `
-SELECT ?iso ?currencyLabel WHERE {
+SELECT ?iso ?currencyLabel ?enwiki WHERE {
   ?country wdt:P31 wd:Q6256; wdt:P298 ?iso; wdt:P38 ?cur.
   ?cur rdfs:label ?currencyLabel. FILTER(LANG(?currencyLabel) = "en")
+  OPTIONAL { ?wpArticle schema:about ?cur; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
 }`;
 
 const Q_LANGUAGE = `
-SELECT ?iso ?languageLabel WHERE {
+SELECT ?iso ?languageLabel ?enwiki WHERE {
   ?country wdt:P31 wd:Q6256; wdt:P298 ?iso; wdt:P37 ?lang.
   ?lang rdfs:label ?languageLabel. FILTER(LANG(?languageLabel) = "en")
+  OPTIONAL { ?wpArticle schema:about ?lang; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
 }`;
 
 const Q_CALLING = `
@@ -138,9 +141,10 @@ SELECT ?iso ?tldLabel WHERE {
 }`;
 
 const Q_PEAK = `
-SELECT ?iso ?peakLabel WHERE {
+SELECT ?iso ?peakLabel ?enwiki WHERE {
   ?country wdt:P31 wd:Q6256; wdt:P298 ?iso; wdt:P610 ?peak.
   ?peak rdfs:label ?peakLabel. FILTER(LANG(?peakLabel) = "en")
+  OPTIONAL { ?wpArticle schema:about ?peak; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
 }`;
 
 // UNESCO World Heritage Sites (bounded ~1,200) — clean, all inherently notable. Difficulty by fame.
@@ -148,6 +152,7 @@ const Q_WHS = `
 SELECT ?siteLabel ?iso ?sl ?desc WHERE {
   ?site wdt:P31 wd:Q9259; wdt:P17 ?c. ?c wdt:P298 ?iso.
   ?site wikibase:sitelinks ?sl. FILTER(?sl >= 25)
+  OPTIONAL { ?wpArticle schema:about ?site; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
   OPTIONAL { ?site schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
@@ -157,6 +162,7 @@ const Q_DISH = `
 SELECT ?dishLabel ?iso ?sl ?desc WHERE {
   ?dish wdt:P31 wd:Q746549; wdt:P495 ?c. ?c wdt:P298 ?iso.
   ?dish wikibase:sitelinks ?sl. FILTER(?sl >= 15)
+  OPTIONAL { ?wpArticle schema:about ?dish; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
   OPTIONAL { ?dish schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
@@ -168,10 +174,11 @@ SELECT ?dishLabel ?iso ?sl ?desc WHERE {
 
 /** Origin-of-X topics keyed on P495 (country of origin), varying only by the subject class. */
 const originQuery = (classQid: string, minSitelinks: number, limit = 3000) => `
-SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   ?item wdt:P31/wdt:P279* wd:${classQid}; wdt:P495 ?c.
   ?c wdt:P298 ?iso.
   ?item wikibase:sitelinks ?sl. FILTER(?sl >= ${minSitelinks})
+  OPTIONAL { ?wpArticle schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
   OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } LIMIT ${limit}`;
@@ -183,7 +190,7 @@ const Q_DRINK = originQuery("Q40050", 12); // drink
 // WDQS cannot finish inside its 60s limit (verified: repeated timeouts). QLever answers in ~1-4s.
 // QLever dialect: explicit prefixes, and rdfs:label instead of SERVICE wikibase:label.
 const Q_CLOTHING = `${QLEVER_PREFIXES}
-SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   ?item wdt:P31/wdt:P279* wd:Q11460; wdt:P495 ?c; wikibase:sitelinks ?sl.
   FILTER(?sl >= 8)
   ?c wdt:P298 ?iso.
@@ -194,19 +201,21 @@ SELECT ?itemLabel ?iso ?sl ?desc WHERE {
 // Endemic animals: P183 ("endemic to") already means single-territory, so these are inherently
 // unique — the panda/lemur/kiwi class of clue. High floor: the tail is full of obscure species.
 const Q_ANIMAL = `
-SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   ?item wdt:P183 ?c. ?c wdt:P298 ?iso.
   ?item wikibase:sitelinks ?sl. FILTER(?sl >= 40)
+  OPTIONAL { ?wpArticle schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
   OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } LIMIT 3000`;
 
 // Festivals/holidays tied to a country (P17). "Which country celebrates X?"
 const Q_FESTIVAL = `
-SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   ?item wdt:P31/wdt:P279* wd:Q132241; wdt:P17 ?c.
   ?c wdt:P298 ?iso.
   ?item wikibase:sitelinks ?sl. FILTER(?sl >= 15)
+  OPTIONAL { ?wpArticle schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
   OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } LIMIT 2000`;
@@ -214,7 +223,7 @@ SELECT ?itemLabel ?iso ?sl ?desc WHERE {
 // Brands/companies by country. Narrow classes + a high sitelink bar keeps this to famous names
 // (IKEA, Nokia, Samsung) and stops the query exploding over the whole business subclass tree.
 const Q_BRAND = `${QLEVER_PREFIXES}
-SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   VALUES ?type { wd:Q4830453 wd:Q891723 wd:Q6881511 wd:Q18388277 }
   ?item wdt:P31 ?type; wdt:P17 ?c; wikibase:sitelinks ?sl.
   FILTER(?sl >= 45)
@@ -226,10 +235,11 @@ SELECT ?itemLabel ?iso ?sl ?desc WHERE {
 // Rivers: uniqueness filtering keeps only rivers whose P17 is a single country, i.e. those flowing
 // entirely within one country (the Danube, shared by 10, is dropped automatically).
 const Q_RIVER = `
-SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   ?item wdt:P31/wdt:P279* wd:Q4022; wdt:P17 ?c.
   ?c wdt:P298 ?iso.
   ?item wikibase:sitelinks ?sl. FILTER(?sl >= 25)
+  OPTIONAL { ?wpArticle schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
   OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } LIMIT 3000`;
@@ -237,9 +247,10 @@ SELECT ?itemLabel ?iso ?sl ?desc WHERE {
 // National anthems. Near-total country coverage, but recognizing an anthem by title is genuinely
 // hard, so these are forced into the bonus pool (see BONUS_TYPES) rather than the mandatory three.
 const Q_ANTHEM = `
-SELECT ?itemLabel ?iso ?sl ?desc WHERE {
+SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   ?c wdt:P31 wd:Q6256; wdt:P298 ?iso; wdt:P85 ?item.
   ?item wikibase:sitelinks ?sl.
+  OPTIONAL { ?wpArticle schema:about ?item; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
   OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } LIMIT 500`;
@@ -326,6 +337,7 @@ async function main() {
         views: Number(r.sl ?? 0),
         sitelinks: Number(r.sl ?? 0),
         fact: r.desc,
+        article: r.enwiki,
       }));
 
   // Land-border graph (ships with the app) — powers the deduction-style "border" questions offline.
@@ -401,12 +413,14 @@ async function main() {
     iso: r.iso!,
     person: r.siteLabel!,
     fact: r.desc,
+    article: r.enwiki,
     views: await pageviews(r.siteLabel!),
   }));
   const dishEntries: PersonEntry[] = await mapPool(dishRows, 8, async (r) => ({
     iso: r.iso!,
     person: r.dishLabel!,
     fact: r.desc,
+    article: r.enwiki,
     views: await pageviews(r.dishLabel!),
   }));
 
@@ -421,7 +435,7 @@ async function main() {
     ...buildFlag(countries),
     ...buildBorderQuestions(adjacency, allowed, nameOf),
     ...buildUniqueValue(
-      capRows.map((r) => ({ iso: r.iso!, value: r.capitalLabel! })),
+      capRows.map((r) => ({ iso: r.iso!, value: r.capitalLabel!, article: r.enwiki })),
       allowed,
       "capital",
       (v) => `Which country's capital is ${v}?`,
@@ -430,7 +444,13 @@ async function main() {
     // Currency: use just the UNIT (last word) so "United Arab Emirates dirham" -> "dirham";
     // shared units ("dollar", "peso", "rupee") then fail the uniqueness check and drop out.
     ...buildUniqueValue(
-      curRows.map((r) => ({ iso: r.iso!, value: r.currencyLabel!.trim().split(/\s+/).at(-1)!.toLowerCase() })),
+      // Clue shows the short form ("balboa"), but the fact must resolve the full article
+      // ("Panamanian balboa") — the short form alone is a disambiguation page.
+      curRows.map((r) => ({
+        iso: r.iso!,
+        value: r.currencyLabel!.trim().split(/\s+/).at(-1)!.toLowerCase(),
+        article: r.enwiki,
+      })),
       allowed,
       "currency",
       (v) => `Which country's currency is the ${v}?`,
@@ -439,7 +459,7 @@ async function main() {
     ...buildUniqueValue(
       // Canonicalize variants (British English -> English) so a language official in >1 country
       // resolves as shared and is dropped — keeps only languages that point to a single country.
-      langRows.map((r) => ({ iso: r.iso!, value: canonicalizeLanguage(r.languageLabel!) })),
+      langRows.map((r) => ({ iso: r.iso!, value: canonicalizeLanguage(r.languageLabel!), article: r.enwiki })),
       allowed,
       "language",
       (v) => `${v} is an official language of which country?`,
@@ -461,7 +481,7 @@ async function main() {
       nameOf,
     ),
     ...buildUniqueValue(
-      peakRows.filter((r) => !DISPUTED_PEAKS.has(r.peakLabel!)).map((r) => ({ iso: r.iso!, value: r.peakLabel! })),
+      peakRows.filter((r) => !DISPUTED_PEAKS.has(r.peakLabel!)).map((r) => ({ iso: r.iso!, value: r.peakLabel!, article: r.enwiki })),
       allowed,
       "highest-point",
       (v) => `${v} is the highest point of which country?`,
@@ -536,7 +556,7 @@ async function main() {
   let sumDone = 0;
   await mapPool(withSubject, 8, async (q) => {
     if (++sumDone % 400 === 0) console.log(`  summaries: ${sumDone}/${withSubject.length}`);
-    const ex = await extract(q.subject!);
+    const ex = await extract(q.article ?? q.subject!);
     const fact =
       ex &&
       pickFact(ex, {
@@ -546,7 +566,10 @@ async function main() {
       });
     if (fact) q.fact = fact;
   });
-  for (const q of shipped) delete q.subject; // transient — never ships
+  for (const q of shipped) {
+    delete q.subject; // transient — never ships
+    delete q.article;
+  }
   const factCount = shipped.filter((q) => q.fact).length;
   console.log(`Reveal facts: ${factCount}/${shipped.length} (${Math.round((factCount / shipped.length) * 100)}%)`);
 
