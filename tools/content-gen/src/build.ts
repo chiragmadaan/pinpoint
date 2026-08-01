@@ -124,6 +124,16 @@ export function formatFact(subject: string, desc: string | undefined): string | 
   return `${head} — ${body}${/[.!?]$/.test(body) ? "" : "."}`;
 }
 
+/**
+ * Capitalise the first letter of a prompt. Some subjects are lowercase common nouns and lead their
+ * template ("haori is traditional dress in which country?"), which then starts mid-sentence. Only
+ * the first character is touched — "the music genre bachata" must stay lowercase mid-sentence,
+ * since those genuinely are common nouns.
+ */
+export function sentenceCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /** Flag emoji from an ISO 3166-1 alpha-2 code, e.g. "FR" -> 🇫🇷. */
 export function flagEmoji(alpha2: string | undefined): string | undefined {
   if (!alpha2 || alpha2.length !== 2) return undefined;
@@ -211,7 +221,7 @@ export function buildUniqueValue(
     out.push({
       id: `${clueType}-${slug(value)}-${iso}`,
       clueType,
-      prompt: prompt(value),
+      prompt: sentenceCase(prompt(value)),
       answerIso: iso,
       acceptedIso: [iso],
       fact: formatFact(value, factByValue.get(value)),
@@ -392,7 +402,7 @@ export function buildPeopleQuestions(
     out.push({
       id: `${clueType}-${slug(person)}-${e.iso}`,
       clueType,
-      prompt: prompt(person),
+      prompt: sentenceCase(prompt(person)),
       answerIso: e.iso,
       acceptedIso: [e.iso],
       fact: formatFact(person, e.fact),

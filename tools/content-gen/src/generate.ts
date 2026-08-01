@@ -187,18 +187,6 @@ SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
 const Q_GENRE = originQuery("Q188451", 15); // music genre (also covers dance styles)
 const Q_SPORT = originQuery("Q349", 12); // sport (incl. martial arts)
 const Q_DRINK = originQuery("Q40050", 12); // drink
-// Clothing + brands run on QLever: both traverse broad subclass trees / the whole company set, which
-// WDQS cannot finish inside its 60s limit (verified: repeated timeouts). QLever answers in ~1-4s.
-// QLever dialect: explicit prefixes, and rdfs:label instead of SERVICE wikibase:label.
-const Q_CLOTHING = `${QLEVER_PREFIXES}
-SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
-  ?item wdt:P31/wdt:P279* wd:Q11460; wdt:P495 ?c; wikibase:sitelinks ?sl.
-  FILTER(?sl >= 8)
-  ?c wdt:P298 ?iso.
-  ?item rdfs:label ?itemLabel. FILTER(LANG(?itemLabel) = "en")
-  OPTIONAL { ?item schema:description ?desc. FILTER(LANG(?desc) = "en") }
-} LIMIT 2000`;
-
 // Endemic animals: P183 ("endemic to") already means single-territory, so these are inherently
 // unique — the panda/lemur/kiwi class of clue. High floor: the tail is full of obscure species.
 const Q_ANIMAL = `
@@ -221,8 +209,9 @@ SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } LIMIT 2000`;
 
-// Brands/companies by country. Narrow classes + a high sitelink bar keeps this to famous names
-// (IKEA, Nokia, Samsung) and stops the query exploding over the whole business subclass tree.
+// Brands run on QLever: the query spans the whole company set, which WDQS cannot finish inside its
+// 60s limit (verified: repeated timeouts). QLever answers in ~4s.
+// QLever dialect: explicit prefixes, and rdfs:label instead of SERVICE wikibase:label.
 const Q_BRAND = `${QLEVER_PREFIXES}
 SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   VALUES ?type { wd:Q4830453 wd:Q891723 wd:Q6881511 wd:Q18388277 }
@@ -297,7 +286,7 @@ async function main() {
   const TOPIC_QUERIES: [string, string, ("wdqs" | "qlever")?][] = [
     ["genre", Q_GENRE], ["sport", Q_SPORT], ["drink", Q_DRINK], ["animal", Q_ANIMAL],
     ["festival", Q_FESTIVAL], ["river", Q_RIVER], ["anthem", Q_ANTHEM],
-    ["clothing", Q_CLOTHING, "qlever"], ["brand", Q_BRAND, "qlever"],
+    ["brand", Q_BRAND, "qlever"],
   ];
   const topicRows: Record<string, Record<string, string>[]> = {};
   for (const [name, q, engine] of TOPIC_QUERIES) {
@@ -329,17 +318,28 @@ async function main() {
   const countries = [...metaMap.values()];
   const nameOf = (iso: string) => metaMap.get(iso)?.name ?? iso;
   /** Topic rows -> entity entries, with SITELINKS standing in for fame and the description as fact. */
-  const topicEntries = (name: string): PersonEntry[] =>
+  /** "Genus species" (optionally trinomial) — a scientific name, meaningless to a casual player. */
+  const isBinomial = (s: string) => /^[A-Z][a-z]+ [a-z]+( [a-z]+)?$/.test(s) && !/\b(the|of|and)\b/i.test(s);
+
+  const topicEntries = (name: string, preferCommonName = false): PersonEntry[] =>
     (topicRows[name] ?? [])
       .filter((r) => r.itemLabel && r.iso && allowed.has(r.iso) && !/^Q\d+$/.test(r.itemLabel))
-      .map((r) => ({
-        iso: r.iso!,
-        person: r.itemLabel!,
-        views: Number(r.sl ?? 0),
-        sitelinks: Number(r.sl ?? 0),
-        fact: r.desc,
-        article: r.enwiki,
-      }));
+      .map((r) => {
+        // Taxa are usually labelled by their binomial in Wikidata but titled by their common name
+        // on Wikipedia ("Mellisuga helenae" -> "Bee hummingbird"), which is the answerable form.
+        const display = preferCommonName && r.enwiki && isBinomial(r.itemLabel!) ? r.enwiki : r.itemLabel!;
+        return {
+          iso: r.iso!,
+          person: display,
+          views: Number(r.sl ?? 0),
+          sitelinks: Number(r.sl ?? 0),
+          fact: r.desc,
+          article: r.enwiki,
+        };
+      })
+      // Still a binomial => no common name exists. Those are unfair (and often plants, since
+      // "endemic to" covers every taxon), so drop rather than dress them up.
+      .filter((e) => !(preferCommonName && isBinomial(e.person)));
 
   // Land-border graph (ships with the app) — powers the deduction-style "border" questions offline.
   const adjacency = JSON.parse(
@@ -504,8 +504,7 @@ async function main() {
     ),
     ...buildPeopleQuestions(topicEntries("sport"), "sport", (n) => `Which country did ${withCategory("sport", n)} originate in?`, nameOf, 14, 80),
     ...buildPeopleQuestions(topicEntries("drink"), "drink", (n) => `Which country did ${withCategory("drink", n)} originate in?`, nameOf, 14, 90),
-    ...buildPeopleQuestions(topicEntries("clothing"), "clothing", (n) => `${n} is traditional dress in which country?`, nameOf, 12, 70),
-    ...buildPeopleQuestions(topicEntries("animal"), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 45, 140),
+    ...buildPeopleQuestions(topicEntries("animal", true), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 45, 140),
     ...buildPeopleQuestions(topicEntries("festival"), "festival", (n) => `Which country is ${n} celebrated in?`, nameOf, 18, 90),
     ...buildPeopleQuestions(topicEntries("brand"), "brand", (n) => `Which country is ${withCategory("company", n)} from?`, nameOf, 60, 170),
     ...buildPeopleQuestions(topicEntries("river"), "river", (n) => `The ${n} flows through which country?`, nameOf, 28, 110),

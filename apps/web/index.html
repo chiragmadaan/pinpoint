@@ -23,14 +23,27 @@
     />
     <meta property="og:url" content="https://chiragmadaan.github.io/pinpoint/" />
     <meta property="og:site_name" content="Pinpoint" />
+    <!--
+      Share card. MUST be an absolute URL — scrapers do not resolve relative paths.
+      Regenerate with `pnpm og`. Scrapers cache previews for days/weeks, so if the design changes,
+      change the FILENAME here too (og-2.png, ...) or existing shares keep the old image.
+    -->
+    <meta property="og:image" content="https://chiragmadaan.github.io/pinpoint/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Pinpoint — a world map with the tagline: read a clue, find the country."
+    />
 
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary" />
+    <!-- Twitter: summary_large_image (not "summary") is what renders the full-width card. -->
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Pinpoint — Daily Geography Game" />
     <meta
       name="twitter:description"
       content="Read a clue, tap the country on the map. A new puzzle every day."
     />
+    <meta name="twitter:image" content="https://chiragmadaan.github.io/pinpoint/og.png" />
   </head>
   <body>
     <div id="app"></div>
