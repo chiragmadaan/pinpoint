@@ -64,6 +64,28 @@ const NON_ANSWER_ISO = new Set([
   "PYF", "ALA", "FRO", "MAC", "HKG", "HMD", "NFK", "SXM",
 ]);
 
+/**
+ * Inhabited dependencies and the sovereign state they belong to.
+ *
+ * These are drawn separately on the map, so a player asked about the USA who taps Puerto Rico — or
+ * about Denmark who taps Greenland — is reasoning correctly about sovereignty but was being scored
+ * as plain wrong (not even a neighbour near-miss: territories share no land border). We therefore
+ * accept a dependency as a correct answer for its parent.
+ *
+ * Deliberately ONE-directional: a question whose answer IS the territory ("where did reggaeton
+ * originate?" -> Puerto Rico) must NOT accept the mainland, since that is a different place.
+ */
+const DEPENDENCIES: Record<string, string[]> = {
+  USA: ["PRI", "VIR", "GUM", "ASM", "MNP"],
+  DNK: ["GRL", "FRO"],
+  FRA: ["NCL", "GUF", "PYF", "MAF", "BLM", "SPM", "WLF"],
+  NLD: ["ABW", "CUW", "SXM"],
+  GBR: ["FLK", "BMU", "CYM", "VGB", "AIA", "MSR", "TCA", "SHN", "PCN", "IMN", "JEY", "GGY"],
+  CHN: ["HKG", "MAC"],
+  NZL: ["NIU", "COK"],
+  FIN: ["ALA"],
+};
+
 /** Run async fn over items with limited concurrency (be polite to WDQS). */
 async function mapPool<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
@@ -153,24 +175,34 @@ SELECT ?iso ?peakLabel ?enwiki WHERE {
 }`;
 
 // UNESCO World Heritage Sites (bounded ~1,200) — clean, all inherently notable. Difficulty by fame.
-const Q_WHS = `
+// World Heritage Sites. NOTE the property: WHS status is a heritage DESIGNATION (P1435), not an
+// "instance of" (P31). Querying P31 returned only the handful of items mistagged that way — 160
+// sites instead of 3,363 — which is why landmarks, the most recognizable geography content there
+// is, shipped just 12 questions. Runs on QLever (fast; WDQS is fine here too but this keeps the
+// heavier topic queries consistent).
+const Q_WHS = `${QLEVER_PREFIXES}
 SELECT ?siteLabel ?iso ?sl ?desc ?enwiki WHERE {
-  ?site wdt:P31 wd:Q9259; wdt:P17 ?c. ?c wdt:P298 ?iso.
-  ?site wikibase:sitelinks ?sl. FILTER(?sl >= 25)
+  ?site wdt:P1435 wd:Q9259; wdt:P17 ?c; wikibase:sitelinks ?sl.
+  FILTER(?sl >= 15)
+  ?c wdt:P298 ?iso.
+  ?site rdfs:label ?siteLabel. FILTER(LANG(?siteLabel) = "en")
   OPTIONAL { ?wpArticle schema:about ?site; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
   OPTIONAL { ?site schema:description ?desc. FILTER(LANG(?desc) = "en") }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-}`;
+} LIMIT 6000`;
 
 // Dishes with a country of origin (bounded). "Which country did <dish> originate in?"
-const Q_DISH = `
+// Food with a country of origin. The old query asked only for P31 = "dish" (Q746549), missing
+// everything filed as a cheese/bread/dessert/pastry/etc: 2,269 items vs 9,019 across the food
+// subclass tree. That traversal is too heavy for WDQS, so it runs on QLever.
+const Q_DISH = `${QLEVER_PREFIXES}
 SELECT ?dishLabel ?iso ?sl ?desc ?enwiki WHERE {
-  ?dish wdt:P31 wd:Q746549; wdt:P495 ?c. ?c wdt:P298 ?iso.
-  ?dish wikibase:sitelinks ?sl. FILTER(?sl >= 15)
+  ?dish wdt:P31/wdt:P279* wd:Q2095; wdt:P495 ?c; wikibase:sitelinks ?sl.
+  FILTER(?sl >= 12)
+  ?c wdt:P298 ?iso.
+  ?dish rdfs:label ?dishLabel. FILTER(LANG(?dishLabel) = "en")
   OPTIONAL { ?wpArticle schema:about ?dish; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
   OPTIONAL { ?dish schema:description ?desc. FILTER(LANG(?desc) = "en") }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-}`;
+} LIMIT 8000`;
 
 // --- Topic categories: a distinctive thing that belongs to exactly ONE country -----------------
 // All follow the same shape (label + iso + sitelinks + description). buildUniqueValue drops any
@@ -260,12 +292,17 @@ SELECT ?name ?iso WHERE {
   ?city rdfs:label ?name. FILTER(LANG(?name) = "en")
 } LIMIT 8000`;
 
-async function mapIsoSet(): Promise<Set<string>> {
+/** Every ISO drawn on the map — including entities we never ASK about but that are still tappable. */
+async function mapIsoSetRaw(): Promise<Set<string>> {
   const fc = JSON.parse(await readFile(url("../../../apps/web/public/countries.geo.json"), "utf8")) as {
     features: { id: string }[];
   };
+  return new Set(fc.features.map((f) => f.id));
+}
+
+async function mapIsoSet(): Promise<Set<string>> {
   // On the map but not answerable: obscure micro-states / territories (still tappable, just unasked).
-  return new Set(fc.features.map((f) => f.id).filter((iso) => !NON_ANSWER_ISO.has(iso)));
+  return new Set([...(await mapIsoSetRaw())].filter((iso) => !NON_ANSWER_ISO.has(iso)));
 }
 
 async function curatedTrivia(allowed: Set<string>): Promise<Question[]> {
@@ -284,6 +321,7 @@ function todayKey(): string {
 
 async function main() {
   const allowed = await mapIsoSet();
+  const onMap = await mapIsoSetRaw(); // tappable, even when not answerable (territories)
   const [baseRows, capRows, curRows, langRows, callRows, tldRows, peakRows, whsRows, dishRows] = await Promise.all([
     sparql("base", Q_BASE),
     sparql("capital", Q_CAPITAL),
@@ -292,8 +330,8 @@ async function main() {
     sparql("calling", Q_CALLING),
     sparql("tld", Q_TLD),
     sparql("peak", Q_PEAK),
-    sparql("whs", Q_WHS),
-    sparql("dish", Q_DISH),
+    sparql("whs", Q_WHS, "qlever"),
+    sparql("dish", Q_DISH, "qlever"),
   ]);
 
   // Topic categories, fetched sequentially (each is a heavier query; be polite to WDQS). A topic
@@ -468,14 +506,14 @@ async function main() {
   }));
 
   console.log(`Fetching pageviews for ${whsRows.length} landmarks, ${dishRows.length} dishes...`);
-  const landmarkEntries: PersonEntry[] = await mapPool(whsRows, 8, async (r) => ({
+  const landmarkEntries: PersonEntry[] = await mapPool(whsRows.filter((r) => allowed.has(r.iso!)), 8, async (r) => ({
     iso: r.iso!,
     person: r.siteLabel!,
     fact: r.desc,
     article: r.enwiki,
     views: await pageviews(r.siteLabel!),
   }));
-  const dishEntries: PersonEntry[] = await mapPool(dishRows, 8, async (r) => ({
+  const dishEntries: PersonEntry[] = await mapPool(dishRows.filter((r) => allowed.has(r.iso!)), 8, async (r) => ({
     iso: r.iso!,
     person: r.dishLabel!,
     fact: r.desc,
@@ -555,7 +593,7 @@ async function main() {
     ...buildPeopleQuestions(natEntries, "nationality", (n) => `Which country is ${n} from?`, nameOf, 150_000, 3_000_000),
     // Landmarks/dishes naturally get far fewer views than people -> much lower floor (35k).
     ...buildPeopleQuestions(landmarkEntries, "landmark", (n) => `In which country is ${n}?`, nameOf, 35_000, 1_000_000, placeLeak),
-    ...buildPeopleQuestions(dishEntries, "dish", (n) => `Which country did ${withCategory("dish", n)} originate in?`, nameOf, 35_000, 1_000_000, placeLeak),
+    ...buildPeopleQuestions(dishEntries.filter((e) => !/\b(wine|grape|beer|beverage|drink|liqueur|brandy|vodka|spirit|cocktail)\b/i.test(e.fact ?? "")), "dish", (n) => `Which country did ${withCategory("dish", n)} originate in?`, nameOf, 35_000, 1_000_000, placeLeak),
     // Topic categories. These reuse the entity pipeline (ambiguous-name drop, leak filter, fame ->
     // difficulty) but score fame by SITELINKS rather than pageviews — no per-item fetch for
     // thousands of items, and sitelinks track "notable thing" well for objects (vs. people, where
@@ -582,9 +620,13 @@ async function main() {
   const autoQs = assignDifficulty(auto, obscurity);
   const curated = await curatedTrivia(allowed);
   // Drop tragedy/atrocity clues (keeps the daily light) and any answer on a disputed territory.
-  const all: Question[] = [...autoQs, ...curated].filter(
-    (q) => !isSensitiveText(q.prompt) && !DISPUTED_ISO.has(q.answerIso),
-  );
+  const all: Question[] = [...autoQs, ...curated]
+    .filter((q) => !isSensitiveText(q.prompt) && !DISPUTED_ISO.has(q.answerIso) && allowed.has(q.answerIso))
+    // Tapping a country's own territory counts as correct (see DEPENDENCIES).
+    .map((q) => {
+      const deps = (DEPENDENCIES[q.answerIso] ?? []).filter((d) => onMap.has(d));
+      return deps.length ? { ...q, acceptedIso: [...new Set([...q.acceptedIso, ...deps])] } : q;
+    });
 
   // Obscure, near-unanswerable types move OUT of the mandatory 3 into the bonus (unlocked on 3/3).
   // Anthems join these: near-total country coverage, but recognizing one by title is too hard to
