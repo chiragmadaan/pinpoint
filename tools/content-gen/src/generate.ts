@@ -336,7 +336,7 @@ async function main() {
         return {
           iso: r.iso!,
           person: display,
-          views: Number(r.sl ?? 0),
+          views: 0, // filled from pageviews below
           sitelinks: Number(r.sl ?? 0),
           fact: r.desc,
           article: r.enwiki,
@@ -346,6 +346,17 @@ async function main() {
       // Still a binomial => no common name exists. Those are unfair (and often plants, since
       // "endemic to" covers every taxon), so drop rather than dress them up.
       .filter((e) => !(opts.preferCommonName && isBinomial(e.person)));
+
+  /**
+   * Fame for topic entities, from PAGEVIEWS — the same signal people use.
+   *
+   * Sitelinks (the cheap stand-in this replaces) count how many Wikipedias have an article, which
+   * bot-generated stubs inflate: the Zhizdra, a minor Russian tributary with 4.3K views/year, cleared
+   * a 25-sitelink bar while the Thames didn't even reach the pool. Sitelinks stay as the query-side
+   * PRE-filter that bounds the candidate set; pageviews decide what is actually recognizable.
+   */
+  const withViews = async (entries: PersonEntry[]): Promise<PersonEntry[]> =>
+    mapPool(entries, 8, async (e) => ({ ...e, views: await pageviews(e.article ?? e.person) }));
 
   // Land-border graph (ships with the app) — powers the deduction-style "border" questions offline.
   const adjacency = JSON.parse(
@@ -505,21 +516,21 @@ async function main() {
     // thousands of items, and sitelinks track "notable thing" well for objects (vs. people, where
     // they underrate athletes). Floors mirror each query's bar; ceilings mark "world famous".
     ...buildPeopleQuestions(
-      topicEntries("genre"),
-      "genre", (n) => `Which country did ${withCategory("music genre", n)} originate in?`, nameOf, 18, 90,
+      await withViews(topicEntries("genre")),
+      "genre", (n) => `Which country did ${withCategory("music genre", n)} originate in?`, nameOf, 25_000, 800_000,
     ),
-    ...buildPeopleQuestions(topicEntries("sport"), "sport", (n) => `Which country did ${withCategory("sport", n)} originate in?`, nameOf, 14, 80),
-    ...buildPeopleQuestions(topicEntries("drink"), "drink", (n) => `Which country did ${withCategory("drink", n)} originate in?`, nameOf, 14, 90),
-    ...buildPeopleQuestions(topicEntries("animal", {
+    ...buildPeopleQuestions(await withViews(topicEntries("sport")), "sport", (n) => `Which country did ${withCategory("sport", n)} originate in?`, nameOf, 25_000, 800_000),
+    ...buildPeopleQuestions(await withViews(topicEntries("drink")), "drink", (n) => `Which country did ${withCategory("drink", n)} originate in?`, nameOf, 25_000, 800_000),
+    ...buildPeopleQuestions(await withViews(topicEntries("animal", {
         preferCommonName: true,
         qualify: (display, desc) => (needsQualifier(display) ? taxonKind(desc) : null),
-      }), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 45, 140),
-    ...buildPeopleQuestions(topicEntries("festival"), "festival", (n) => `Which country is ${n} celebrated in?`, nameOf, 18, 90),
-    ...buildPeopleQuestions(topicEntries("brand"), "brand", (n) => `Which country is ${withCategory("company", n)} from?`, nameOf, 60, 170),
-    ...buildPeopleQuestions(topicEntries("river", {
+      })), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 25_000, 800_000),
+    ...buildPeopleQuestions(await withViews(topicEntries("festival")), "festival", (n) => `Which country is ${n} celebrated in?`, nameOf, 20_000, 800_000),
+    ...buildPeopleQuestions(await withViews(topicEntries("brand")), "brand", (n) => `Which country is ${withCategory("company", n)} from?`, nameOf, 50_000, 2_000_000),
+    ...buildPeopleQuestions(await withViews(topicEntries("river", {
         qualify: (display) => (/\briver\b/i.test(display) ? null : "river"),
-      }), "river", (n) => `The ${n} flows through which country?`, nameOf, 28, 110),
-    ...buildPeopleQuestions(topicEntries("anthem"), "anthem", (n) => `"${n}" is the national anthem of which country?`, nameOf, 3, 60),
+      })), "river", (n) => `The ${n} flows through which country?`, nameOf, 25_000, 800_000),
+    ...buildPeopleQuestions(await withViews(topicEntries("anthem")), "anthem", (n) => `"${n}" is the national anthem of which country?`, nameOf, 3_000, 200_000),
   ];
 
   const autoQs = assignDifficulty(auto, obscurity);
@@ -546,7 +557,7 @@ async function main() {
   for (const q of mandatory) split[q.difficulty][isPerson(q.clueType) ? 0 : 1]++;
   console.log("person / non-person per tier:", { easy: split.easy, medium: split.medium, hard: split.hard });
 
-  const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 655, 45, 0.28, bonusPool);
+  const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 643, 45, 0.28, bonusPool);
 
   // Reveal facts: upgrade from the Wikidata description to the Wikipedia opening sentence, which is
   // written to inform rather than to disambiguate ("Species of mammal" -> "a euryhaline species of
