@@ -250,6 +250,27 @@ export function withCategory(category: string, name: string): string {
   return new RegExp(`\\b${stem}\\w*\\b`, "i").test(name) ? name : `the ${category} ${name}`;
 }
 
+/**
+ * The kind of organism from a Wikidata taxon description ("species of bird" -> "bird"). Those
+ * descriptions are useless as FACTS but are exactly right as a category label, which is what an
+ * opaque name needs: "The bird Kagu ..." rather than "The Kagu ...".
+ */
+export function taxonKind(desc: string | undefined): string | null {
+  const m = /^(?:species|genus|subspecies|breed) of ([a-z]+)/i.exec((desc ?? "").trim());
+  if (!m) return null;
+  const k = m[1]!.toLowerCase().replace(/s$/, ""); // "mammals" -> "mammal"
+  return /^(bird|mammal|plant|reptile|fish|amphibian|insect|tree|flower)$/.test(k) ? k : null;
+}
+
+/**
+ * Does this name leave the reader with nothing to hold onto? A single opaque word ("Zhizdra",
+ * "Kagu") does; a descriptive multi-word name ("freshwater crocodile", "Hai River") already says
+ * what it is, and prefixing those reads badly ("the reptile freshwater crocodile").
+ */
+export function needsQualifier(name: string): boolean {
+  return !/\s/.test(name.trim());
+}
+
 /** Country names that read as "the X" in a sentence ("borders the Netherlands", not "borders Netherlands"). */
 const NEEDS_ARTICLE = /^(United |Republic of|Democratic Republic|Central African|Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Czech Republic|Dominican Republic|Ivory Coast|Falkland|Marshall|Solomon|Isle of Man|Vatican)/;
 
@@ -370,6 +391,9 @@ export interface PersonEntry {
   sitelinks?: number; // Wikipedia language count — gates the easy tier (athletes score low here)
   fact?: string; // raw Wikidata description, formatted into Question.fact on the reveal
   article?: string; // exact enwiki article title (labels are often ambiguous)
+  /** Category word shown before the name in the PROMPT only ("bird" -> "The bird Kagu ..."). Kept
+   *  out of the id/subject so ids stay stable and fact lookups still use the clean name. */
+  qualifier?: string;
 }
 
 export function buildPeopleQuestions(
@@ -402,7 +426,7 @@ export function buildPeopleQuestions(
     out.push({
       id: `${clueType}-${slug(person)}-${e.iso}`,
       clueType,
-      prompt: sentenceCase(prompt(person)),
+      prompt: sentenceCase(prompt(e.qualifier ? `${e.qualifier} ${person}` : person)),
       answerIso: e.iso,
       acceptedIso: [e.iso],
       fact: formatFact(person, e.fact),

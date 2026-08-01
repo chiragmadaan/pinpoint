@@ -16,7 +16,9 @@ import {
   buildUniqueValue,
   canonicalizeLanguage,
   isSensitiveText,
+  needsQualifier,
   pvFame,
+  taxonKind,
   withCategory,
   type Candidate,
   type CountryMeta,
@@ -321,13 +323,16 @@ async function main() {
   /** "Genus species" (optionally trinomial) — a scientific name, meaningless to a casual player. */
   const isBinomial = (s: string) => /^[A-Z][a-z]+ [a-z]+( [a-z]+)?$/.test(s) && !/\b(the|of|and)\b/i.test(s);
 
-  const topicEntries = (name: string, preferCommonName = false): PersonEntry[] =>
+  const topicEntries = (
+    name: string,
+    opts: { preferCommonName?: boolean; qualify?: (display: string, desc?: string) => string | null } = {},
+  ): PersonEntry[] =>
     (topicRows[name] ?? [])
       .filter((r) => r.itemLabel && r.iso && allowed.has(r.iso) && !/^Q\d+$/.test(r.itemLabel))
       .map((r) => {
         // Taxa are usually labelled by their binomial in Wikidata but titled by their common name
         // on Wikipedia ("Mellisuga helenae" -> "Bee hummingbird"), which is the answerable form.
-        const display = preferCommonName && r.enwiki && isBinomial(r.itemLabel!) ? r.enwiki : r.itemLabel!;
+        const display = opts.preferCommonName && r.enwiki && isBinomial(r.itemLabel!) ? r.enwiki : r.itemLabel!;
         return {
           iso: r.iso!,
           person: display,
@@ -335,11 +340,12 @@ async function main() {
           sitelinks: Number(r.sl ?? 0),
           fact: r.desc,
           article: r.enwiki,
+          qualifier: opts.qualify?.(display, r.desc) ?? undefined,
         };
       })
       // Still a binomial => no common name exists. Those are unfair (and often plants, since
       // "endemic to" covers every taxon), so drop rather than dress them up.
-      .filter((e) => !(preferCommonName && isBinomial(e.person)));
+      .filter((e) => !(opts.preferCommonName && isBinomial(e.person)));
 
   // Land-border graph (ships with the app) — powers the deduction-style "border" questions offline.
   const adjacency = JSON.parse(
@@ -504,10 +510,15 @@ async function main() {
     ),
     ...buildPeopleQuestions(topicEntries("sport"), "sport", (n) => `Which country did ${withCategory("sport", n)} originate in?`, nameOf, 14, 80),
     ...buildPeopleQuestions(topicEntries("drink"), "drink", (n) => `Which country did ${withCategory("drink", n)} originate in?`, nameOf, 14, 90),
-    ...buildPeopleQuestions(topicEntries("animal", true), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 45, 140),
+    ...buildPeopleQuestions(topicEntries("animal", {
+        preferCommonName: true,
+        qualify: (display, desc) => (needsQualifier(display) ? taxonKind(desc) : null),
+      }), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 45, 140),
     ...buildPeopleQuestions(topicEntries("festival"), "festival", (n) => `Which country is ${n} celebrated in?`, nameOf, 18, 90),
     ...buildPeopleQuestions(topicEntries("brand"), "brand", (n) => `Which country is ${withCategory("company", n)} from?`, nameOf, 60, 170),
-    ...buildPeopleQuestions(topicEntries("river"), "river", (n) => `The ${n} flows through which country?`, nameOf, 28, 110),
+    ...buildPeopleQuestions(topicEntries("river", {
+        qualify: (display) => (/\briver\b/i.test(display) ? null : "river"),
+      }), "river", (n) => `The ${n} flows through which country?`, nameOf, 28, 110),
     ...buildPeopleQuestions(topicEntries("anthem"), "anthem", (n) => `"${n}" is the national anthem of which country?`, nameOf, 3, 60),
   ];
 
