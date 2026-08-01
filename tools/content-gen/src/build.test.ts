@@ -11,7 +11,22 @@ import {
   flagEmoji,
   isSensitiveText,
   leaksCountryName,
+  leaksPlaceName,
 } from "./build.ts";
+
+test("leaksPlaceName catches a clue naming a city in its own answer country", () => {
+  const japan = ["Tokyo", "Osaka", "Kyoto"];
+  // The real bug: this question degrades to "where is Tokyo?".
+  assert.equal(leaksPlaceName("Tokyo International Film Festival", japan), true);
+  assert.equal(leaksPlaceName("SK Slavia Prague", ["Prague", "Brno"]), true);
+  // Unrelated clues survive.
+  assert.equal(leaksPlaceName("Cannes Film Festival", japan), false);
+  assert.equal(leaksPlaceName("sushi", japan), false);
+  // Substrings must not trigger: "Osaka" inside a longer word is not a place mention.
+  assert.equal(leaksPlaceName("Osakabe clan chronicles", ["Osaka"]), false);
+  // Very short names are ignored — they collide with ordinary words too easily.
+  assert.equal(leaksPlaceName("The old town", ["Old"]), false);
+});
 
 test("withCategory names the kind of thing, without repeating a category already in the name", () => {
   // "Which country is Alexa Internet from?" reads like a person — brand and nationality share that

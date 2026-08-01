@@ -16,11 +16,13 @@ import {
   buildUniqueValue,
   canonicalizeLanguage,
   isSensitiveText,
+  matchedPlaceName,
   needsQualifier,
   pvFame,
   taxonKind,
   withCategory,
   type Candidate,
+  type PlaceLeak,
   type CountryMeta,
   type PersonEntry,
 } from "./build.ts";
@@ -247,6 +249,17 @@ SELECT ?itemLabel ?iso ?sl ?desc ?enwiki WHERE {
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 } LIMIT 500`;
 
+// Well-known places per country, for the place-leak filter. A clue that names a big city inside its
+// own answer country ("Tokyo International Film Festival") is really asking "where is Tokyo?".
+// QLever: the city subclass traversal is another query WDQS cannot finish.
+const Q_CITIES = `${QLEVER_PREFIXES}
+SELECT ?name ?iso WHERE {
+  ?city wdt:P31/wdt:P279* wd:Q515; wdt:P17 ?c; wdt:P1082 ?pop.
+  FILTER(?pop > 300000)
+  ?c wdt:P298 ?iso.
+  ?city rdfs:label ?name. FILTER(LANG(?name) = "en")
+} LIMIT 8000`;
+
 async function mapIsoSet(): Promise<Set<string>> {
   const fc = JSON.parse(await readFile(url("../../../apps/web/public/countries.geo.json"), "utf8")) as {
     features: { id: string }[];
@@ -289,6 +302,7 @@ async function main() {
     ["genre", Q_GENRE], ["sport", Q_SPORT], ["drink", Q_DRINK], ["animal", Q_ANIMAL],
     ["festival", Q_FESTIVAL], ["river", Q_RIVER], ["anthem", Q_ANTHEM],
     ["brand", Q_BRAND, "qlever"],
+    ["cities", Q_CITIES, "qlever"],
   ];
   const topicRows: Record<string, Record<string, string>[]> = {};
   for (const [name, q, engine] of TOPIC_QUERIES) {
@@ -357,6 +371,33 @@ async function main() {
    */
   const withViews = async (entries: PersonEntry[]): Promise<PersonEntry[]> =>
     mapPool(entries, 8, async (e) => ({ ...e, views: await pageviews(e.article ?? e.person) }));
+
+  // Place gazetteer: capitals at any size (Valletta, Nuuk) plus every city over 300k.
+  const placesByIso = new Map<string, string[]>();
+  const addPlace = (iso: string, name: string) => {
+    if (!iso || !name) return;
+    const list = placesByIso.get(iso) ?? placesByIso.set(iso, []).get(iso)!;
+    if (!list.includes(name)) list.push(name);
+  };
+  for (const r of capRows) addPlace(r.iso!, r.capitalLabel!);
+  for (const r of topicRows.cities ?? []) addPlace(r.iso!, r.name!);
+  const allPlaces = [...new Set([...placesByIso.values()].flat())];
+  console.log(`Place gazetteer: ${allPlaces.length} places across ${placesByIso.size} countries — fetching fame...`);
+  // How much a mentioned place gives away depends on how well known it IS, so score the gazetteer
+  // by pageviews (population misleads: Edinburgh 500k is famous, Pasig 800k is not).
+  const placeFame = new Map<string, number>();
+  await mapPool(allPlaces, 8, async (name) => placeFame.set(name, await pageviews(name)));
+
+  /** See PlaceLeak: famous city -> the question is really "where is that city"; obscure city ->
+   *  not difficulty but variance (locals get it free), which belongs in the optional bonus. */
+  const placeLeak: PlaceLeak = (text, iso) => {
+    const hit = matchedPlaceName(text, placesByIso.get(iso) ?? []);
+    if (!hit) return null;
+    const views = placeFame.get(hit) ?? 0;
+    if (views >= 1_000_000) return "easy"; // Tokyo 2.5M, Toronto 2.2M, Prague 1.6M, Edinburgh 1.4M
+    if (views >= 250_000) return "keep"; // Tallinn 693k, Vilnius 575k — partial hint only
+    return "bonus"; // Viña del Mar 86k, Pasig 120k — regional knowledge, high variance
+  };
 
   // Land-border graph (ships with the app) — powers the deduction-style "border" questions offline.
   const adjacency = JSON.parse(
@@ -458,6 +499,7 @@ async function main() {
       "capital",
       (v) => `Which country's capital is ${v}?`,
       nameOf,
+      // NO placesOf here: the capital's name is the clue itself, so a place check deletes them all.
     ),
     // Currency: use just the UNIT (last word) so "United Arab Emirates dirham" -> "dirham";
     // shared units ("dollar", "peso", "rupee") then fail the uniqueness check and drop out.
@@ -473,6 +515,7 @@ async function main() {
       "currency",
       (v) => `Which country's currency is the ${v}?`,
       nameOf,
+      placeLeak,
     ),
     ...buildUniqueValue(
       // Canonicalize variants (British English -> English) so a language official in >1 country
@@ -482,6 +525,7 @@ async function main() {
       "language",
       (v) => `${v} is an official language of which country?`,
       nameOf,
+      placeLeak,
     ),
     ...buildUniqueValue(
       callRows.map((r) => ({ iso: r.iso!, value: r.code! })),
@@ -504,13 +548,14 @@ async function main() {
       "highest-point",
       (v) => `${v} is the highest point of which country?`,
       nameOf,
+      placeLeak,
     ),
     // Recognizability floors (annual pageviews): drop below, "easy" at the ceiling. deathplace omitted.
     ...buildPeopleQuestions(birthEntries, "birthplace", (n) => `In which country was ${n} born?`, nameOf, 150_000, 3_000_000),
     ...buildPeopleQuestions(natEntries, "nationality", (n) => `Which country is ${n} from?`, nameOf, 150_000, 3_000_000),
     // Landmarks/dishes naturally get far fewer views than people -> much lower floor (35k).
-    ...buildPeopleQuestions(landmarkEntries, "landmark", (n) => `In which country is ${n}?`, nameOf, 35_000, 1_000_000),
-    ...buildPeopleQuestions(dishEntries, "dish", (n) => `Which country did ${withCategory("dish", n)} originate in?`, nameOf, 35_000, 1_000_000),
+    ...buildPeopleQuestions(landmarkEntries, "landmark", (n) => `In which country is ${n}?`, nameOf, 35_000, 1_000_000, placeLeak),
+    ...buildPeopleQuestions(dishEntries, "dish", (n) => `Which country did ${withCategory("dish", n)} originate in?`, nameOf, 35_000, 1_000_000, placeLeak),
     // Topic categories. These reuse the entity pipeline (ambiguous-name drop, leak filter, fame ->
     // difficulty) but score fame by SITELINKS rather than pageviews — no per-item fetch for
     // thousands of items, and sitelinks track "notable thing" well for objects (vs. people, where
@@ -518,19 +563,20 @@ async function main() {
     ...buildPeopleQuestions(
       await withViews(topicEntries("genre")),
       "genre", (n) => `Which country did ${withCategory("music genre", n)} originate in?`, nameOf, 25_000, 800_000,
+      placeLeak,
     ),
-    ...buildPeopleQuestions(await withViews(topicEntries("sport")), "sport", (n) => `Which country did ${withCategory("sport", n)} originate in?`, nameOf, 25_000, 800_000),
-    ...buildPeopleQuestions(await withViews(topicEntries("drink")), "drink", (n) => `Which country did ${withCategory("drink", n)} originate in?`, nameOf, 25_000, 800_000),
+    ...buildPeopleQuestions(await withViews(topicEntries("sport")), "sport", (n) => `Which country did ${withCategory("sport", n)} originate in?`, nameOf, 25_000, 800_000, placeLeak),
+    ...buildPeopleQuestions(await withViews(topicEntries("drink")), "drink", (n) => `Which country did ${withCategory("drink", n)} originate in?`, nameOf, 25_000, 800_000, placeLeak),
     ...buildPeopleQuestions(await withViews(topicEntries("animal", {
         preferCommonName: true,
         qualify: (display, desc) => (needsQualifier(display) ? taxonKind(desc) : null),
-      })), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 25_000, 800_000),
-    ...buildPeopleQuestions(await withViews(topicEntries("festival")), "festival", (n) => `Which country is ${n} celebrated in?`, nameOf, 20_000, 800_000),
-    ...buildPeopleQuestions(await withViews(topicEntries("brand")), "brand", (n) => `Which country is ${withCategory("company", n)} from?`, nameOf, 50_000, 2_000_000),
+      })), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 25_000, 800_000, placeLeak),
+    ...buildPeopleQuestions(await withViews(topicEntries("festival")), "festival", (n) => `Which country is ${n} celebrated in?`, nameOf, 20_000, 800_000, placeLeak),
+    ...buildPeopleQuestions(await withViews(topicEntries("brand")), "brand", (n) => `Which country is ${withCategory("company", n)} from?`, nameOf, 50_000, 2_000_000, placeLeak),
     ...buildPeopleQuestions(await withViews(topicEntries("river", {
         qualify: (display) => (/\briver\b/i.test(display) ? null : "river"),
-      })), "river", (n) => `The ${n} flows through which country?`, nameOf, 25_000, 800_000),
-    ...buildPeopleQuestions(await withViews(topicEntries("anthem")), "anthem", (n) => `"${n}" is the national anthem of which country?`, nameOf, 3_000, 200_000),
+      })), "river", (n) => `The ${n} flows through which country?`, nameOf, 25_000, 800_000, placeLeak),
+    ...buildPeopleQuestions(await withViews(topicEntries("anthem")), "anthem", (n) => `"${n}" is the national anthem of which country?`, nameOf, 3_000, 200_000, placeLeak),
   ];
 
   const autoQs = assignDifficulty(auto, obscurity);
@@ -544,8 +590,8 @@ async function main() {
   // Anthems join these: near-total country coverage, but recognizing one by title is too hard to
   // put in the mandatory three (player request) — perfect as the unlocked-on-3/3 bonus.
   const BONUS_TYPES = new Set(["calling-code", "tld", "highest-point", "currency", "anthem"]);
-  const mandatory = all.filter((q) => !BONUS_TYPES.has(q.clueType));
-  const bonusPool = all.filter((q) => BONUS_TYPES.has(q.clueType));
+  const mandatory = all.filter((q) => !BONUS_TYPES.has(q.clueType) && !(q as Candidate).bonusOnly);
+  const bonusPool = all.filter((q) => BONUS_TYPES.has(q.clueType) || (q as Candidate).bonusOnly);
 
   const mDiff = { easy: 0, medium: 0, hard: 0 };
   for (const q of mandatory) mDiff[q.difficulty]++;
@@ -557,7 +603,7 @@ async function main() {
   for (const q of mandatory) split[q.difficulty][isPerson(q.clueType) ? 0 : 1]++;
   console.log("person / non-person per tier:", { easy: split.easy, medium: split.medium, hard: split.hard });
 
-  const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 643, 45, 0.28, bonusPool);
+  const calendar: PuzzleCalendar = assembleCalendar(mandatory, todayKey(), 649, 45, 0.28, bonusPool);
 
   // Reveal facts: upgrade from the Wikidata description to the Wikipedia opening sentence, which is
   // written to inform rather than to disambiguate ("Species of mammal" -> "a euryhaline species of
@@ -591,6 +637,7 @@ async function main() {
   for (const q of shipped) {
     delete q.subject; // transient — never ships
     delete q.article;
+    delete q.bonusOnly;
   }
   const factCount = shipped.filter((q) => q.fact).length;
   console.log(`Reveal facts: ${factCount}/${shipped.length} (${Math.round((factCount / shipped.length) * 100)}%)`);

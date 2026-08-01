@@ -34,6 +34,8 @@ export type Candidate = Omit<Question, "difficulty"> & {
   subject?: string;
   /** Wikipedia article title to look the fact up under; falls back to `subject`. Transient. */
   article?: string;
+  /** Route this single question to the bonus pool regardless of its clue type (see PlaceLeak). */
+  bonusOnly?: boolean;
 };
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -74,6 +76,31 @@ export function leaksCountryName(value: string, countryName: string): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Does the clue name a well-known place inside its own answer country? `leaksCountryName` only
+ * catches the country's own name, so "Tokyo International Film Festival" -> Japan sailed through:
+ * the question degrades to "where is Tokyo?". Festivals and clubs are usually named after the city
+ * that hosts them, so this is structural rather than incidental.
+ *
+ * Short names are ignored (a 3-letter city would match inside unrelated words), and the caller
+ * decides which clue types to run this on — for `capital`/`locate`, naming the place IS the question.
+ */
+export function matchedPlaceName(text: string, places: string[]): string | null {
+  const t = text.toLowerCase();
+  let best: string | null = null;
+  for (const place of places) {
+    const p = place.toLowerCase();
+    if (p.length < 4 || !t.includes(p)) continue;
+    if (!new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t)) continue;
+    if (!best || place.length > best.length) best = place; // prefer the most specific match
+  }
+  return best;
+}
+
+export function leaksPlaceName(text: string, places: string[]): boolean {
+  return matchedPlaceName(text, places) !== null;
 }
 
 /**
@@ -201,6 +228,8 @@ export function buildUniqueValue(
   clueType: ClueType,
   prompt: (value: string) => string,
   nameOf?: (iso: string) => string,
+  /** Verdict for clues naming a place in their own answer country (see PlaceLeak). */
+  placeLeak?: PlaceLeak,
 ): Candidate[] {
   const byValue = new Map<string, Set<string>>();
   const factByValue = new Map<string, string>();
@@ -218,6 +247,7 @@ export function buildUniqueValue(
     if (isos.size !== 1) continue; // shared value -> ambiguous -> drop
     const iso = [...isos][0]!;
     if (nameOf && leaksCountryName(value, nameOf(iso))) continue; // clue reveals the answer -> drop
+    const leak = placeLeak?.(value, iso) ?? null;
     out.push({
       id: `${clueType}-${slug(value)}-${iso}`,
       clueType,
@@ -225,6 +255,8 @@ export function buildUniqueValue(
       answerIso: iso,
       acceptedIso: [iso],
       fact: formatFact(value, factByValue.get(value)),
+      ...(leak === "easy" ? { hardness: 0.05 } : {}),
+      ...(leak === "bonus" ? { bonusOnly: true } : {}),
       subject: value,
       article: articleByValue.get(value),
       source: `wikidata:${clueType}`,
@@ -270,6 +302,18 @@ export function taxonKind(desc: string | undefined): string | null {
 export function needsQualifier(name: string): boolean {
   return !/\s/.test(name.trim());
 }
+
+/**
+ * What to do with a clue that names a place inside its own answer country. How much the mention
+ * gives away depends entirely on how famous the place is, so a blanket drop was wrong in both
+ * directions — it deleted "Viña del Mar" (86K views/yr, a giveaway to nobody) while treating it the
+ * same as "Tokyo" (2.5M).
+ *   "easy"  - a household-name city; the question really just asks where that city is
+ *   "keep"  - partly known; natural difficulty already reflects it
+ *   "bonus" - obscure city: not difficulty but VARIANCE (locals answer instantly, everyone else
+ *             cannot), and the optional bonus slot is where coin-flips belong
+ */
+export type PlaceLeak = (text: string, iso: string) => "easy" | "keep" | "bonus" | null;
 
 /** Country names that read as "the X" in a sentence ("borders the Netherlands", not "borders Netherlands"). */
 const NEEDS_ARTICLE = /^(United |Republic of|Democratic Republic|Central African|Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Czech Republic|Dominican Republic|Ivory Coast|Falkland|Marshall|Solomon|Isle of Man|Vatican)/;
@@ -403,6 +447,8 @@ export function buildPeopleQuestions(
   nameOf?: (iso: string) => string,
   floor = 150_000, // below this many annual pageviews -> too obscure, dropped
   ceil = 5_000_000, // at/above this -> maximally famous (easy)
+  /** Verdict for clues naming a place in their own answer country (see PlaceLeak). */
+  placeLeak?: PlaceLeak,
 ): Candidate[] {
   // Reject a name shared by people from different countries (ambiguous answer).
   const isosByName = new Map<string, Set<string>>();
@@ -422,6 +468,7 @@ export function buildPeopleQuestions(
     if (/^Q\d+$/.test(person)) continue; // no English label available
     const e = best.get(person)!;
     if (nameOf && leaksCountryName(person, nameOf(e.iso))) continue;
+    const leak = placeLeak?.(person, e.iso) ?? null;
     const fame = pvFame(e.views, floor, ceil); // recognizability from pageviews
     out.push({
       id: `${clueType}-${slug(person)}-${e.iso}`,
@@ -433,7 +480,8 @@ export function buildPeopleQuestions(
       subject: person,
       article: e.article,
       source: `wikidata:${clueType}`,
-      hardness: Math.max(0.1, 1 - fame * 0.85), // famous -> easy, obscure -> hard
+      hardness: leak === "easy" ? 0.05 : Math.max(0.1, 1 - fame * 0.85), // famous -> easy, obscure -> hard
+      ...(leak === "bonus" ? { bonusOnly: true } : {}),
       sitelinks: e.sitelinks, // carried for the easy-tier gate
     });
   }
