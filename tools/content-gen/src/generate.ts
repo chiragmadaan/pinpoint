@@ -17,6 +17,7 @@ import {
   canonicalizeLanguage,
   isSensitiveText,
   pvFame,
+  withCategory,
   type Candidate,
   type CountryMeta,
   type PersonEntry,
@@ -149,7 +150,7 @@ SELECT ?iso ?peakLabel ?enwiki WHERE {
 
 // UNESCO World Heritage Sites (bounded ~1,200) — clean, all inherently notable. Difficulty by fame.
 const Q_WHS = `
-SELECT ?siteLabel ?iso ?sl ?desc WHERE {
+SELECT ?siteLabel ?iso ?sl ?desc ?enwiki WHERE {
   ?site wdt:P31 wd:Q9259; wdt:P17 ?c. ?c wdt:P298 ?iso.
   ?site wikibase:sitelinks ?sl. FILTER(?sl >= 25)
   OPTIONAL { ?wpArticle schema:about ?site; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
@@ -159,7 +160,7 @@ SELECT ?siteLabel ?iso ?sl ?desc WHERE {
 
 // Dishes with a country of origin (bounded). "Which country did <dish> originate in?"
 const Q_DISH = `
-SELECT ?dishLabel ?iso ?sl ?desc WHERE {
+SELECT ?dishLabel ?iso ?sl ?desc ?enwiki WHERE {
   ?dish wdt:P31 wd:Q746549; wdt:P495 ?c. ?c wdt:P298 ?iso.
   ?dish wikibase:sitelinks ?sl. FILTER(?sl >= 15)
   OPTIONAL { ?wpArticle schema:about ?dish; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?enwiki. }
@@ -492,21 +493,21 @@ async function main() {
     ...buildPeopleQuestions(natEntries, "nationality", (n) => `Which country is ${n} from?`, nameOf, 150_000, 3_000_000),
     // Landmarks/dishes naturally get far fewer views than people -> much lower floor (35k).
     ...buildPeopleQuestions(landmarkEntries, "landmark", (n) => `In which country is ${n}?`, nameOf, 35_000, 1_000_000),
-    ...buildPeopleQuestions(dishEntries, "dish", (n) => `Which country did ${n} originate in?`, nameOf, 35_000, 1_000_000),
+    ...buildPeopleQuestions(dishEntries, "dish", (n) => `Which country did ${withCategory("dish", n)} originate in?`, nameOf, 35_000, 1_000_000),
     // Topic categories. These reuse the entity pipeline (ambiguous-name drop, leak filter, fame ->
     // difficulty) but score fame by SITELINKS rather than pageviews — no per-item fetch for
     // thousands of items, and sitelinks track "notable thing" well for objects (vs. people, where
     // they underrate athletes). Floors mirror each query's bar; ceilings mark "world famous".
     ...buildPeopleQuestions(
       topicEntries("genre"),
-      "genre", (n) => `Which country did ${n} originate in?`, nameOf, 18, 90,
+      "genre", (n) => `Which country did ${withCategory("music genre", n)} originate in?`, nameOf, 18, 90,
     ),
-    ...buildPeopleQuestions(topicEntries("sport"), "sport", (n) => `Which country did ${n} originate in?`, nameOf, 14, 80),
-    ...buildPeopleQuestions(topicEntries("drink"), "drink", (n) => `Which country did ${n} originate in?`, nameOf, 14, 90),
+    ...buildPeopleQuestions(topicEntries("sport"), "sport", (n) => `Which country did ${withCategory("sport", n)} originate in?`, nameOf, 14, 80),
+    ...buildPeopleQuestions(topicEntries("drink"), "drink", (n) => `Which country did ${withCategory("drink", n)} originate in?`, nameOf, 14, 90),
     ...buildPeopleQuestions(topicEntries("clothing"), "clothing", (n) => `${n} is traditional dress in which country?`, nameOf, 12, 70),
     ...buildPeopleQuestions(topicEntries("animal"), "animal", (n) => `The ${n} is found only in which country?`, nameOf, 45, 140),
     ...buildPeopleQuestions(topicEntries("festival"), "festival", (n) => `Which country is ${n} celebrated in?`, nameOf, 18, 90),
-    ...buildPeopleQuestions(topicEntries("brand"), "brand", (n) => `Which country is ${n} from?`, nameOf, 60, 170),
+    ...buildPeopleQuestions(topicEntries("brand"), "brand", (n) => `Which country is ${withCategory("company", n)} from?`, nameOf, 60, 170),
     ...buildPeopleQuestions(topicEntries("river"), "river", (n) => `The ${n} flows through which country?`, nameOf, 28, 110),
     ...buildPeopleQuestions(topicEntries("anthem"), "anthem", (n) => `"${n}" is the national anthem of which country?`, nameOf, 3, 60),
   ];

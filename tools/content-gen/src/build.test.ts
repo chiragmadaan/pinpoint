@@ -6,11 +6,24 @@ import {
   assignDifficulty,
   buildUniqueValue,
   canonicalizeLanguage,
+  withCategory,
   computeObscurity,
   flagEmoji,
   isSensitiveText,
   leaksCountryName,
 } from "./build.ts";
+
+test("withCategory names the kind of thing, without repeating a category already in the name", () => {
+  // "Which country is Alexa Internet from?" reads like a person — brand and nationality share that
+  // template, so the category is what tells them apart.
+  assert.equal(withCategory("company", "Alexa Internet"), "the company Alexa Internet");
+  assert.equal(withCategory("music genre", "bachata"), "the music genre bachata");
+  assert.equal(withCategory("sport", "Lethwei"), "the sport Lethwei");
+  // Already self-describing -> leave alone (no "the company Ford Motor Company").
+  assert.equal(withCategory("company", "Ford Motor Company"), "Ford Motor Company");
+  assert.equal(withCategory("music genre", "Chicago blues genre"), "Chicago blues genre");
+  assert.equal(withCategory("dish", "Pizza dishes"), "Pizza dishes"); // plural form too
+});
 
 test("canonicalizeLanguage collapses variants so multi-country languages get deduped away", () => {
   assert.equal(canonicalizeLanguage("British English"), "English");

@@ -223,6 +223,23 @@ export function buildUniqueValue(
   return out;
 }
 
+/**
+ * Name the KIND of thing a clue is about, so the subject isn't mistaken for something else.
+ *
+ * "Which country is Alexa Internet from?" reads like a person — `brand` and `nationality` share that
+ * exact template, so nothing distinguishes a company from a human. Naming the category fixes it
+ * without hinting at the answer (the category comes from the clue type, not from the country).
+ * Skipped when the name already says it ("Ford Motor Company" must not become "the company Ford
+ * Motor Company").
+ */
+export function withCategory(category: string, name: string): string {
+  const head = category.split(/\s+/).at(-1)!.toLowerCase(); // "music genre" -> "genre"
+  // Match the whole word family from a stem, so irregular plurals count too: "dish" also matches
+  // "dishes", "company" also matches "companies". The leading \b stops "sport" hitting "transport".
+  const stem = head.replace(/y$/, "");
+  return new RegExp(`\\b${stem}\\w*\\b`, "i").test(name) ? name : `the ${category} ${name}`;
+}
+
 /** Country names that read as "the X" in a sentence ("borders the Netherlands", not "borders Netherlands"). */
 const NEEDS_ARTICLE = /^(United |Republic of|Democratic Republic|Central African|Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Czech Republic|Dominican Republic|Ivory Coast|Falkland|Marshall|Solomon|Isle of Man|Vatican)/;
 
