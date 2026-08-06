@@ -22,8 +22,9 @@ export const DEFAULT_STYLE: MapStyle = {
 
 export interface RenderState {
   selected?: Iso3 | null;
-  /** Set during answer reveal. */
-  correct?: Iso3 | null;
+  /** Set during answer reveal — all accepted answers, so a multi-answer clue
+   *  ("one of the top 5...") highlights every one of them, not just the canonical pick. */
+  correct?: Iso3 | Iso3[] | null;
   guess?: Iso3 | null;
   /** Draw country-name labels (the "names" aid). */
   labels?: boolean;
@@ -43,9 +44,13 @@ function tracePath(ctx: CanvasRenderingContext2D, geom: Geometry, projection: Pr
   }
 }
 
+/** Exported under a test-only alias so the reveal colour rules can be unit-tested (see render.test.ts). */
+export { fillFor as fillForTesting };
+
 function fillFor(iso: Iso3, state: RenderState, style: MapStyle): string {
-  if (state.correct && iso === state.correct) return style.correct;
-  if (state.guess && iso === state.guess && iso !== state.correct) return style.wrong;
+  const correct = state.correct == null ? [] : Array.isArray(state.correct) ? state.correct : [state.correct];
+  if (correct.includes(iso)) return style.correct;
+  if (state.guess && iso === state.guess) return style.wrong;
   if (state.selected && iso === state.selected) return style.selected;
   return style.land;
 }

@@ -31,7 +31,8 @@ export interface WorldMapOptions {
 export interface WorldMap {
   render(): void;
   highlight(iso: Iso3 | null): void;
-  reveal(guessIso: Iso3, correctIso: Iso3): void;
+  /** Show the outcome. `correctIso` may be several countries when the clue accepts any of them. */
+  reveal(guessIso: Iso3, correctIso: Iso3 | Iso3[]): void;
   /** Zoom by a factor around the map centre (for ＋/－ buttons). >1 zooms in, <1 zooms out. */
   zoomBy(factor: number): void;
   /** Toggle country-name labels (the "names" aid). */
@@ -260,9 +261,10 @@ export function createWorldMap(opts: WorldMapOptions): WorldMap {
     },
     reveal(guessIso, correctIso) {
       selectable = false; // no country selection while the answer is shown
-      state = { selected: null, guess: guessIso, correct: correctIso };
-      // Smoothly zoom so BOTH the guess and correct country are visible (fixes tiny-country invisibility).
-      const target = computeFit(guessIso === correctIso ? [correctIso] : [guessIso, correctIso]);
+      const correct = Array.isArray(correctIso) ? correctIso : [correctIso];
+      state = { selected: null, guess: guessIso, correct };
+      // Smoothly zoom so the guess AND every accepted answer are visible (fixes tiny-country invisibility).
+      const target = computeFit(correct.includes(guessIso) ? correct : [guessIso, ...correct]);
       if (target) animateTo(target.k, target.tx, target.ty);
       else render();
     },

@@ -106,12 +106,18 @@ interface CacheShape {
 export async function sparql(name: string, query: string, engine: "wdqs" | "qlever" = "wdqs"): Promise<Row[]> {
   const cacheFile = new URL(`${name}.json`, CACHE_DIR);
   let stale: Row[] | null = null; // cached rows from a PREVIOUS version of this query
+  // Drift detection MUST refetch: comparing fresh output against the same cached rows would always
+  // report "nothing changed". PINPOINT_NO_CACHE=1 forces every query back to the source.
+  const skipCache = process.env.PINPOINT_NO_CACHE === "1";
   if (existsSync(cacheFile)) {
     try {
       const cached = JSON.parse(await readFile(cacheFile, "utf8")) as Partial<CacheShape>;
       if (cached && Array.isArray(cached.rows)) {
-        if (cached.query === query) return cached.rows; // exact hit
-        stale = cached.rows; // query changed -> refetch, but keep this as a fallback
+        // Skipping the cache must NOT also skip the failure fallback: a full refetch hammers the
+        // endpoint hardest, so it is exactly when one flaky query is most likely to take the run
+        // down. Always load the cached rows as a safety net; just don't return them as a hit.
+        if (cached.query === query && !skipCache) return cached.rows; // exact hit
+        stale = cached.rows;
       }
     } catch {
       /* fall through to refetch */

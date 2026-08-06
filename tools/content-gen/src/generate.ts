@@ -5,6 +5,7 @@
 //       PINPOINT_FETCH=curl pnpm content:gen      (sandboxes without Node sockets)
 
 import { readFile, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import type { PuzzleCalendar, Question } from "@pinpoint/core";
 import {
   assembleCalendar,
@@ -319,7 +320,21 @@ function todayKey(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-async function main() {
+/**
+ * Fetch every source and build the full candidate pool. Split out of `main` so the validator can
+ * rebuild the pool from FRESH sources and diff it against what shipped, without duplicating any of
+ * the query/filter/difficulty logic (which is where drift would actually hide).
+ */
+export interface CandidateBuild {
+  all: Question[];
+  countries: CountryMeta[];
+  allowed: Set<string>;
+  onMap: Set<string>;
+  placesByIso: Map<string, string[]>;
+  nameOf: (iso: string) => string;
+}
+
+export async function buildCandidates(): Promise<CandidateBuild> {
   const allowed = await mapIsoSet();
   const onMap = await mapIsoSetRaw(); // tappable, even when not answerable (territories)
   const [baseRows, capRows, curRows, langRows, callRows, tldRows, peakRows, whsRows, dishRows] = await Promise.all([
@@ -631,7 +646,14 @@ async function main() {
   // Obscure, near-unanswerable types move OUT of the mandatory 3 into the bonus (unlocked on 3/3).
   // Anthems join these: near-total country coverage, but recognizing one by title is too hard to
   // put in the mandatory three (player request) — perfect as the unlocked-on-3/3 bonus.
-  const BONUS_TYPES = new Set(["calling-code", "tld", "highest-point", "currency", "anthem"]);
+  return { all, countries, allowed, onMap, placesByIso, nameOf };
+}
+
+/** Types that are never part of the mandatory three — too obscure to gate the daily on. */
+export const BONUS_TYPES = new Set(["calling-code", "tld", "highest-point", "currency", "anthem"]);
+
+async function main() {
+  const { all, countries, nameOf } = await buildCandidates();
   const mandatory = all.filter((q) => !BONUS_TYPES.has(q.clueType) && !(q as Candidate).bonusOnly);
   const bonusPool = all.filter((q) => BONUS_TYPES.has(q.clueType) || (q as Candidate).bonusOnly);
 
@@ -695,7 +717,11 @@ async function main() {
   console.log(`Calendar: ${calendar.puzzles.length} days (${withBonus} with bonus), from ${calendar.puzzles[0]?.date}`);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Only generate when run directly — validate.ts imports buildCandidates() from here and must not
+// trigger a full regeneration as a side effect of the import.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

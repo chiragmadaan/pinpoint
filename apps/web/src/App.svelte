@@ -28,7 +28,16 @@
     type Trophy,
     type Verdict,
   } from "@pinpoint/core";
-  import { createWorldMap, type MapFeature, type WorldMap } from "@pinpoint/map";
+  import {
+    bearingDeg,
+    compassPoint,
+    createWorldMap,
+    haversineKm,
+    largestOuterRing,
+    polygonCentroidXY,
+    type MapFeature,
+    type WorldMap,
+  } from "@pinpoint/map";
   import { loadAdjacency, loadCalendar, loadFeatures } from "./lib/data";
   import {
     clearPlayerState,
@@ -48,6 +57,17 @@
   const BUILD_SHA = import.meta.env.VITE_BUILD_SHA;
   const EMOJI: Record<Verdict, string> = { correct: "🟩", neighbor: "🟨", wrong: "⬛" };
   const base = import.meta.env.BASE_URL;
+
+  /** Representative lon/lat for a country, for the distance/direction readout. Cached per iso. */
+  const centroidCache = new Map<string, [number, number] | null>();
+  function centroidOf(iso: string): [number, number] | null {
+    if (!centroidCache.has(iso)) {
+      const f = features.find((x) => x.iso === iso);
+      const ring = f ? largestOuterRing(f.geometry) : null;
+      centroidCache.set(iso, ring ? polygonCentroidXY(ring as [number, number][]) : null);
+    }
+    return centroidCache.get(iso) ?? null;
+  }
 
   // Flag emojis render as raw "KE" letters on Windows (broken + leaks the answer), so we render an
   // SVG instead. The stored emoji is two regional-indicator chars -> decode back to the alpha-2 code.
@@ -120,7 +140,7 @@
     if (session?.phase !== "question") return;
     session = timeUp(session, adjacency, scoreCfg());
     const r = session.results.at(-1)!;
-    map?.reveal(r.guessIso, r.correctIso);
+    map?.reveal(r.guessIso, currentQuestion(session)?.acceptedIso ?? r.correctIso);
     void syncBar();
   }
   onDestroy(stopTimer);
@@ -194,6 +214,24 @@
   $: lastResult = revealed ? (session!.results.at(-1) ?? null) : null;
   $: answerName = lastResult ? (names[lastResult.correctIso] ?? lastResult.correctIso) : "";
   $: guessName = lastResult?.guessIso ? (names[lastResult.guessIso] ?? lastResult.guessIso) : "";
+  /**
+   * How far off a wrong guess was, and in which direction. Without this a miss teaches nothing —
+   * tapping a neighbour and tapping another continent both just read "wrong". The arrow is a rotated
+   * SVG rather than a directional emoji: emoji rendering is inconsistent across platforms (the flag
+   * emoji rendered as raw letters on Windows), and rotation also gives the exact bearing instead of
+   * snapping to one of eight arrows.
+   */
+  $: miss =
+    lastResult && lastResult.verdict !== "correct" && lastResult.guessIso
+      ? (() => {
+          const from = centroidOf(lastResult.guessIso);
+          const to = centroidOf(lastResult.correctIso);
+          if (!from || !to) return null;
+          const km = Math.round(haversineKm(from, to));
+          const bearing = bearingDeg(from, to);
+          return { km, bearing, compass: compassPoint(bearing) };
+        })()
+      : null;
   // Live XP = banked XP + XP earned so far today; drives the trophy bar as you answer.
   $: liveXp = player.xp + (session ? sessionXp(session) : 0);
   $: prog = trophyProgress(liveXp);
@@ -285,7 +323,7 @@
     stopTimer();
     session = submitGuess(session, adjacency, scoreCfg());
     const r = session.results.at(-1)!;
-    map?.reveal(r.guessIso, r.correctIso);
+    map?.reveal(r.guessIso, currentQuestion(session)?.acceptedIso ?? r.correctIso);
     void syncBar(); // animate the trophy bar (fill-then-rollover on unlock)
   }
 
@@ -473,6 +511,16 @@
           {EMOJI.wrong} Not quite — the answer was {answerName}. {#if lastResult.guessIso}You picked {guessName}.{/if}
         {/if}
       </p>
+      {#if miss}
+        <p class="miss">
+          <svg class="arrow" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"
+               style="transform: rotate({miss.bearing}deg)">
+            <path d="M12 3 L12 21 M12 3 L6 10 M12 3 L18 10" />
+          </svg>
+          {miss.km.toLocaleString()} km {miss.compass}
+          <span class="sr-only">of your guess</span>
+        </p>
+      {/if}
       {#if q.fact}
         <!-- Facts come from Wikipedia (CC BY-SA), which requires visible attribution. -->
         <p class="fact">💡 {q.fact} <span class="fact-src">— Wikipedia</span></p>
@@ -559,6 +607,15 @@
     background: rgba(255, 255, 255, 0.06); border-left: 3px solid #f2c14e;
     font-size: 0.92rem; line-height: 1.4; opacity: 0.92; text-align: left;
   }
+  .miss {
+    margin: 0.1rem 0 0.5rem; display: flex; align-items: center; gap: 0.45rem;
+    font-size: 0.95rem; font-weight: 600; color: #f2c14e;
+  }
+  /* Rotated SVG rather than a directional emoji: emoji rendering is inconsistent across platforms
+     (see the flag fallback above) and rotation gives the exact bearing, not one of eight arrows. */
+  .arrow { flex: none; }
+  .arrow path { fill: none; stroke: #f2c14e; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .fact-src { opacity: 0.5; font-size: 0.78rem; white-space: nowrap; }
   .welcome { text-align: center; padding: 2rem 1rem; }
   .welcome h2 { font-size: 1.6rem; margin: 0; }

@@ -142,6 +142,43 @@ export function inViewport(
   return !(x1 < -margin || x0 > width + margin || y1 < -margin || y0 > height + margin);
 }
 
+const toRad = (d: number) => (d * Math.PI) / 180;
+const toDeg = (r: number) => (r * 180) / Math.PI;
+
+/**
+ * Great-circle distance in km. Powers the "you were 3,200 km away" reveal — a wrong guess otherwise
+ * teaches the player nothing, since tapping a neighbour and tapping another continent look identical.
+ */
+export function haversineKm(a: LonLat, b: LonLat): number {
+  const R = 6371;
+  const [lon1, lat1] = a;
+  const [lon2, lat2] = b;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const s =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+/** Initial great-circle bearing from `a` to `b`, in degrees clockwise from north (0-360). */
+export function bearingDeg(a: LonLat, b: LonLat): number {
+  const [lon1, lat1] = a;
+  const [lon2, lat2] = b;
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const Δλ = toRad(lon2 - lon1);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+const COMPASS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+
+/** Bearing -> compass word. The arrow is rotated to the exact bearing; this is its accessible label. */
+export function compassPoint(bearing: number): string {
+  return COMPASS[Math.round((((bearing % 360) + 360) % 360) / 45) % 8]!;
+}
+
 /** Shortest distance from planar point `p` to the segment `a`-`b` (same units as the inputs). */
 export function pointToSegmentDistance(
   p: [number, number],

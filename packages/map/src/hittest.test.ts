@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { equirectangular, geometryBounds, inViewport } from "./geometry.ts";
+import { bearingDeg, compassPoint, equirectangular, geometryBounds, haversineKm, inViewport } from "./geometry.ts";
 import { resolveTap } from "./hittest.ts";
 import { wheelZoomFactor } from "./index.ts";
 import type { MapFeature } from "./types.ts";
@@ -36,6 +36,30 @@ const SMALL: MapFeature = {
   iso: "SML",
   geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]] },
 };
+
+test("haversineKm measures great-circle distance", () => {
+  assert.equal(Math.round(haversineKm([0, 0], [0, 0])), 0);
+  // 1 degree of latitude is ~111 km anywhere on the globe.
+  assert.ok(Math.abs(haversineKm([0, 0], [0, 1]) - 111) < 2);
+  // London -> Paris is ~344 km.
+  assert.ok(Math.abs(haversineKm([-0.13, 51.51], [2.35, 48.86]) - 344) < 15);
+});
+
+test("bearingDeg gives the compass direction from one point to another", () => {
+  assert.equal(Math.round(bearingDeg([0, 0], [0, 10])), 0); // due north
+  assert.equal(Math.round(bearingDeg([0, 0], [10, 0])), 90); // due east
+  assert.equal(Math.round(bearingDeg([0, 0], [0, -10])), 180); // due south
+  assert.equal(Math.round(bearingDeg([0, 0], [-10, 0])), 270); // due west
+  const ne = bearingDeg([0, 0], [10, 10]); // north-east quadrant
+  assert.ok(ne > 0 && ne < 90, `expected NE, got ${ne}`);
+});
+
+test("compassPoint names the bearing for screen readers", () => {
+  assert.equal(compassPoint(0), "north");
+  assert.equal(compassPoint(90), "east");
+  assert.equal(compassPoint(225), "south-west");
+  assert.equal(compassPoint(359), "north"); // wraps
+});
 
 test("a tap inside a country resolves to that country", () => {
   const [x, y] = proj.forward([-30, 20]);

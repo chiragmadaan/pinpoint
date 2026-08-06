@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "gen": "node --experimental-strip-types src/generate.ts",
-    "test": "node --test --experimental-strip-types"
+    "test": "node --test --experimental-strip-types",
+    "validate": "node --experimental-strip-types src/validate.ts"
   },
   "dependencies": {
     "@pinpoint/core": "workspace:*"

@@ -10,7 +10,8 @@
     "dev:web": "pnpm --filter @pinpoint/web dev",
     "test": "pnpm -r test",
     "content:gen": "pnpm --filter @pinpoint/content-gen gen",
-    "og": "node tools/make-og-image.mjs"
+    "og": "node tools/make-og-image.mjs",
+    "validate": "pnpm --filter @pinpoint/content-gen validate"
   },
   "devDependencies": {
     "typescript": "^5.5.0"
