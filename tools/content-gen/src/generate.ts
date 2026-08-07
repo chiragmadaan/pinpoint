@@ -19,6 +19,7 @@ import {
   isSensitiveText,
   matchedPlaceName,
   needsQualifier,
+  resemblesCountryName,
   pvFame,
   taxonKind,
   withCategory,
@@ -331,6 +332,8 @@ export interface CandidateBuild {
   allowed: Set<string>;
   onMap: Set<string>;
   placesByIso: Map<string, string[]>;
+  /** Annual pageviews per gazetteer place — the signal the leak tiering is based on. */
+  placeFame: Map<string, number>;
   nameOf: (iso: string) => string;
 }
 
@@ -446,6 +449,9 @@ export async function buildCandidates(): Promise<CandidateBuild> {
   const placeLeak: PlaceLeak = (text, iso) => {
     const hit = matchedPlaceName(text, placesByIso.get(iso) ?? []);
     if (!hit) return null;
+    // A place named after (or sharing a root with) its country gives the answer away no matter how
+    // obscure the place is: "Casbah of Algiers" -> Algeria needs no geography at all.
+    if (resemblesCountryName(hit, nameOf(iso))) return "easy";
     const views = placeFame.get(hit) ?? 0;
     if (views >= 1_000_000) return "easy"; // Tokyo 2.5M, Toronto 2.2M, Prague 1.6M, Edinburgh 1.4M
     if (views >= 250_000) return "keep"; // Tallinn 693k, Vilnius 575k — partial hint only
@@ -646,7 +652,7 @@ export async function buildCandidates(): Promise<CandidateBuild> {
   // Obscure, near-unanswerable types move OUT of the mandatory 3 into the bonus (unlocked on 3/3).
   // Anthems join these: near-total country coverage, but recognizing one by title is too hard to
   // put in the mandatory three (player request) — perfect as the unlocked-on-3/3 bonus.
-  return { all, countries, allowed, onMap, placesByIso, nameOf };
+  return { all, countries, allowed, onMap, placesByIso, placeFame, nameOf };
 }
 
 /** Types that are never part of the mandatory three — too obscure to gate the daily on. */

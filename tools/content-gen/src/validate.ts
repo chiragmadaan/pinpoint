@@ -15,11 +15,12 @@
 //      "no change".
 
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import type { PuzzleCalendar, Question } from "@pinpoint/core";
 import { buildCandidates } from "./generate.ts";
-import { matchedPlaceName } from "./build.ts";
-import { diffDrift, structuralChecks, type Finding } from "./checks.ts";
+import { matchedPlaceName, resemblesCountryName } from "./build.ts";
+import { diffDrift, leakPolicyChecks, structuralChecks, STRUCTURAL_CHECK_NAMES, type Finding } from "./checks.ts";
 
 const url = (p: string) => new URL(p, import.meta.url);
 
@@ -29,6 +30,7 @@ const todayKey = () => {
 };
 
 async function main() {
+  const startedAt = Date.now();
   const wantDrift = process.argv.includes("--drift");
   const cal = JSON.parse(
     await readFile(url("../../../apps/web/public/questions.json"), "utf8"),
@@ -46,7 +48,7 @@ async function main() {
     flagExists: (cc) => existsSync(url(`../../../apps/web/public/flags/${cc}.svg`)),
     today: todayKey(),
   });
-  const STRUCTURAL_CHECKS = 14;
+  const structuralMs = Date.now() - startedAt;
 
   // Pass 2: drift against freshly fetched sources.
   if (!wantDrift) {
@@ -68,7 +70,7 @@ async function main() {
       });
     }
     if (build) {
-    const { all, allowed, placesByIso } = build;
+    const { all, allowed, placesByIso, placeFame, nameOf } = build;
     const drift = diffDrift(shipped, all);
 
     if (drift.changed.length) {
@@ -91,27 +93,67 @@ async function main() {
     if (notAllowed.length) {
       findings.push({ level: "FAIL", check: "answers still on the answerable list", detail: `${notAllowed.length} — e.g. ${notAllowed.slice(0, 6).map((q) => `${q.answerIso} (${q.id})`).join(" | ")}` });
     }
-    const leaky = shipped
-      .filter((q) => !["capital", "locate", "birthplace", "nationality"].includes(q.clueType))
-      .filter((q) => matchedPlaceName(q.prompt, placesByIso.get(q.answerIso) ?? []));
-    if (leaky.length) {
-      findings.push({ level: "WARN", check: "no clue names a place in its own answer country", detail: `${leaky.length} — e.g. ${leaky.slice(0, 6).map((q) => q.prompt.slice(0, 48)).join(" | ")}` });
-    }
+    // Naming a place in your own country is not itself a defect — the policy TIERS it. Check the
+    // tiering instead (flagging every leak reported the policy working as 49 failures).
+    const exempt = new Set(["capital", "locate", "birthplace", "nationality"]);
+    findings.push(
+      ...leakPolicyChecks({
+        main: days.flatMap((p) => p.questions).filter((q) => !exempt.has(q.clueType)),
+        bonus: days.flatMap((p) => (p.bonus ? [p.bonus] : [])),
+        leakedPlace: (q) => matchedPlaceName(q.prompt, placesByIso.get(q.answerIso) ?? []),
+        fameOf: (place) => placeFame.get(place) ?? 0,
+        resembles: (place, iso) => resemblesCountryName(place, nameOf(iso)),
+      }),
+    );
     }
   }
 
-  console.log(`\nPinpoint content validation — ${days.length} days, ${shipped.length} questions\n`);
-  for (const level of ["FAIL", "WARN", "INFO"] as const) {
-    for (const f of findings.filter((x) => x.level === level)) {
-      const icon = level === "FAIL" ? "\u2716" : level === "WARN" ? "\u26a0" : "\u00b7";
-      console.log(`${icon} ${level.padEnd(4)} ${f.check}\n       ${f.detail}`);
-    }
+  // ---- write the report ------------------------------------------------------------------------
+  const ms = Date.now() - startedAt;
+  const dur = (n: number) => (n < 1000 ? `${n} ms` : n < 60_000 ? `${(n / 1000).toFixed(1)} s` : `${Math.floor(n / 60_000)} m ${Math.round((n % 60_000) / 1000)} s`);
+  const named = (name: string) => findings.filter((f) => f.check === name);
+  const icon = (l: Finding["level"]) => (l === "FAIL" ? "\u2716" : l === "WARN" ? "\u26a0" : "\u00b7");
+
+  const lines: string[] = [];
+  lines.push(`# Pinpoint content validation`, "");
+  lines.push(`- Run: ${new Date().toISOString()}`);
+  lines.push(`- Calendar: ${days.length} days (${days[0]?.date} to ${days.at(-1)?.date}), ${shipped.length} questions`);
+  lines.push(`- Mode: ${wantDrift ? "structural + drift" : "structural only"}`);
+  lines.push(`- Duration: **${dur(ms)}**${wantDrift ? ` (structural ${dur(structuralMs)}, drift ${dur(ms - structuralMs)})` : ""}`, "");
+
+  const fails = findings.filter((f) => f.level === "FAIL");
+  const warns = findings.filter((f) => f.level === "WARN");
+  lines.push(`## Summary`, "");
+  lines.push(`| | |`, `|---|---|`);
+  lines.push(`| Failures | ${fails.length} |`, `| Warnings | ${warns.length} |`);
+  lines.push(`| Structural checks | ${STRUCTURAL_CHECK_NAMES.length - new Set(findings.map((f) => f.check)).size >= 0 ? "" : ""}${STRUCTURAL_CHECK_NAMES.filter((n) => named(n).length === 0).length}/${STRUCTURAL_CHECK_NAMES.length} passed |`, "");
+
+  lines.push(`## Structural checks`, "");
+  for (const name of STRUCTURAL_CHECK_NAMES) {
+    const hits = named(name);
+    if (hits.length === 0) lines.push(`- \u2713 ${name}`);
+    else for (const f of hits) lines.push(`- ${icon(f.level)} **${name}** — ${f.detail}`);
   }
-  const fails = findings.filter((f) => f.level === "FAIL").length;
-  const warns = findings.filter((f) => f.level === "WARN").length;
-  const structuralFindings = findings.filter((f) => f.level !== "INFO" && f.check !== "drift").length;
-  console.log(`\n${Math.max(0, STRUCTURAL_CHECKS - structuralFindings)}/${STRUCTURAL_CHECKS} structural checks passed, ${fails} failed, ${warns} warnings`);
-  console.log(fails === 0 ? "No blocking issues.\n" : "Issues above need attention.\n");
+  // "calendar covers today" only appears when it fires, so it isn't in the fixed name list.
+  for (const f of named("calendar covers today")) lines.push(`- ${icon(f.level)} **calendar covers today** — ${f.detail}`);
+  lines.push("");
+
+  const driftFindings = findings.filter((f) => !STRUCTURAL_CHECK_NAMES.includes(f.check as never) && f.check !== "calendar covers today");
+  lines.push(`## Content drift`, "");
+  if (!wantDrift) lines.push(`_Skipped. Run \`PINPOINT_NO_CACHE=1 pnpm validate --drift\` to re-check every source._`);
+  else if (driftFindings.length === 0) lines.push(`- \u2713 no drift detected`);
+  else for (const f of driftFindings) lines.push(`- ${icon(f.level)} **${f.check}** — ${f.detail}`);
+  lines.push("");
+
+  const reportPath = new URL("../../../validation-report.md", import.meta.url);
+  await writeFile(reportPath, lines.join("\n"));
+
+  // Console stays a one-liner: the detail lives in the report, which is what a 20-minute run needs.
+  const where = fileURLToPath(reportPath);
+  console.log(
+    `\nValidation ${fails.length === 0 ? "OK" : "FOUND ISSUES"} — ${fails.length} failed, ${warns.length} warnings, ${dur(ms)}\n` +
+      `Report: ${where}\n`,
+  );
   // Report-only by design: never fail the caller.
 }
 

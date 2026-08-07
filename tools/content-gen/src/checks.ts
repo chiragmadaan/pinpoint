@@ -13,6 +13,27 @@ export interface Finding {
   detail: string;
 }
 
+/**
+ * Every structural check, in report order. Exported so the report can list what PASSED, not only
+ * what failed — "14/14 passed" is only meaningful if you can see which 14.
+ */
+export const STRUCTURAL_CHECK_NAMES = [
+  "every day has 3 questions",
+  "difficulty order easy->medium->hard",
+  "every day has a bonus",
+  "no duplicate question ids",
+  "no repeated answer country within a day",
+  "every answer is a country on the map",
+  "every acceptedIso is on the map",
+  "no internal fields leaked into shipped JSON",
+  "prompts start with a capital",
+  "timeSensitive questions carry asOf",
+  "flag questions have their SVG asset",
+  "per-day category rule (<=1 person, <=2 per category)",
+  "dates are contiguous",
+  "calendar runway",
+] as const;
+
 /** Fields the pipeline uses internally and must strip before a question ships. */
 export const TRANSIENT_FIELDS = ["subject", "article", "bonusOnly", "hardness", "sitelinks"];
 
@@ -136,6 +157,64 @@ export function structuralChecks(cal: PuzzleCalendar, opts: StructuralOptions): 
     out.push({ level: "WARN", check: "calendar runway", detail: `${daysLeft} days left (ends ${last})` });
   }
 
+  return out;
+}
+
+export interface LeakPolicyInput {
+  /** Questions in the mandatory three, with the difficulty they shipped at. */
+  main: Question[];
+  /** Questions in the optional bonus slot. */
+  bonus: Question[];
+  /** The well-known place a clue names inside its own answer country, or null. */
+  leakedPlace: (q: Question) => string | null;
+  /** Annual pageviews for a place — how much of a giveaway the mention is. */
+  fameOf: (place: string) => number;
+  /** Does the place name share a root with its country ("Algiers"/"Algeria")? */
+  resembles: (place: string, iso: string) => boolean;
+}
+
+/**
+ * Assert the place-leak TIERING, not the mere presence of a leak.
+ *
+ * A clue naming a place in its own country is not automatically a defect — the policy is to tier
+ * it by how much it gives away. So the check is whether each leak landed where the policy says:
+ * a household-name city (or one sharing its country's name) makes the question easy; an obscure one
+ * is high-variance regional knowledge and belongs in the optional bonus. Flagging every leak, as
+ * the first version did, reported the policy working correctly as 49 failures.
+ */
+export function leakPolicyChecks(input: LeakPolicyInput): Finding[] {
+  const { main, bonus, leakedPlace, fameOf, resembles } = input;
+  const out: Finding[] = [];
+  const shouldBeEasy: string[] = [];
+  const shouldBeBonus: string[] = [];
+
+  for (const q of main) {
+    const place = leakedPlace(q);
+    if (!place) continue;
+    const giveaway = resembles(place, q.answerIso) || fameOf(place) >= 1_000_000;
+    if (giveaway && q.difficulty !== "easy") {
+      shouldBeEasy.push(`${q.prompt.slice(0, 44)} (${place}, ${q.difficulty})`);
+    } else if (!giveaway && fameOf(place) < 250_000) {
+      shouldBeBonus.push(`${q.prompt.slice(0, 44)} (${place}, ${fameOf(place).toLocaleString()} views)`);
+    }
+  }
+  // A leak inside the bonus slot is fine by construction — that IS where obscure leaks are sent.
+  void bonus;
+
+  if (shouldBeEasy.length) {
+    out.push({
+      level: "WARN",
+      check: "famous-place leaks are tiered easy",
+      detail: `${shouldBeEasy.length} — e.g. ${shouldBeEasy.slice(0, 6).join(" | ")}`,
+    });
+  }
+  if (shouldBeBonus.length) {
+    out.push({
+      level: "WARN",
+      check: "obscure-place leaks are routed to bonus",
+      detail: `${shouldBeBonus.length} — e.g. ${shouldBeBonus.slice(0, 6).join(" | ")}`,
+    });
+  }
   return out;
 }
 

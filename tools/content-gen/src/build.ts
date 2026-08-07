@@ -104,6 +104,28 @@ export function leaksPlaceName(text: string, places: string[]): boolean {
 }
 
 /**
+ * Is a place name so close to its country's name that mentioning it hands over the answer?
+ * "Casbah of Algiers" -> Algeria was slipping through: `leaksCountryName` needs a 4-character common
+ * prefix and algiers/algeria share only 3 (they diverge at position 4), while the place filter rated
+ * Algiers a mere partial hint on 522k views/yr. Together that shipped a HARD question with the
+ * answer nearly spelled out in it.
+ *
+ * A 3-character prefix would be far too loose in general — chile/china also share 3 — but this is
+ * only ever asked about a place we already know is INSIDE that country, and Chile is not in China.
+ * That containment is what makes the looser threshold safe.
+ */
+export function resemblesCountryName(place: string, countryName: string): boolean {
+  const p = place.toLowerCase().replace(/[^a-z ]/g, "").split(/\s+/).filter(Boolean);
+  const c = countryName.toLowerCase().replace(/[^a-z ]/g, "").split(/\s+/).filter(Boolean);
+  for (const pw of p) {
+    for (const cw of c) {
+      if (pw.length >= 4 && cw.length >= 4 && commonPrefixLen(pw, cw) >= 3) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Collapse a language label to its base so regional/standard variants group together: "British
  * English" & "American English" -> "English", "Standard Chinese"/"Mandarin Chinese" -> "Chinese",
  * "Modern Standard Arabic" -> "Arabic". Feeding this to buildUniqueValue makes a language official

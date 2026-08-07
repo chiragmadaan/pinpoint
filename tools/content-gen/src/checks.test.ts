@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { DailyPuzzle, PuzzleCalendar, Question } from "@pinpoint/core";
-import { diffDrift, flagAssetCode, structuralChecks, type StructuralOptions } from "./checks.ts";
+import { diffDrift, flagAssetCode, leakPolicyChecks, structuralChecks, type StructuralOptions } from "./checks.ts";
 
 const TODAY = "2026-08-01";
 const OPTS: StructuralOptions = { onMap: new Set(["AAA", "BBB", "CCC", "DDD"]), flagExists: () => true, today: TODAY };
@@ -165,4 +165,43 @@ test("diffDrift separates a CHANGED answer from one that vanished", () => {
 test("diffDrift reports nothing when the pool is unchanged", () => {
   const shipped = [q({ id: "capital-lisbon-PRT", answerIso: "PRT" })];
   assert.deepEqual(diffDrift(shipped, [...shipped]), { changed: [], vanished: [] });
+});
+
+test("leakPolicyChecks asserts the TIERING, not the presence of a leak", () => {
+  const mk = (prompt: string, difficulty: Question["difficulty"], iso = "AAA") =>
+    q({ id: `festival-${prompt}-${iso}`, prompt, difficulty, answerIso: iso, clueType: "festival" });
+  const fame: Record<string, number> = { Bigcity: 2_000_000, Midcity: 500_000, Smalltown: 50_000 };
+  const input = {
+    bonus: [],
+    leakedPlace: (x: Question) => Object.keys(fame).find((p) => x.prompt.includes(p)) ?? null,
+    fameOf: (p: string) => fame[p] ?? 0,
+    resembles: () => false,
+  };
+
+  // A household-name city makes the question easy — flagged when it isn't.
+  const bad = leakPolicyChecks({ ...input, main: [mk("Bigcity Festival", "hard")] });
+  assert.deepEqual(bad.map((f) => f.check), ["famous-place leaks are tiered easy"]);
+  assert.deepEqual(leakPolicyChecks({ ...input, main: [mk("Bigcity Festival", "easy")] }), []);
+
+  // An obscure city is high-variance regional knowledge -> belongs in bonus, not the main three.
+  const obscure = leakPolicyChecks({ ...input, main: [mk("Smalltown Festival", "hard")] });
+  assert.deepEqual(obscure.map((f) => f.check), ["obscure-place leaks are routed to bonus"]);
+
+  // A partial hint keeps its natural difficulty — no finding either way.
+  assert.deepEqual(leakPolicyChecks({ ...input, main: [mk("Midcity Festival", "hard")] }), []);
+  // No leak at all -> nothing to say.
+  assert.deepEqual(leakPolicyChecks({ ...input, main: [mk("Unrelated Festival", "hard")] }), []);
+});
+
+test("a place sharing its country's name is a giveaway regardless of how obscure it is", () => {
+  // "Casbah of Algiers" -> Algeria: needs no geography, the answer is spelled in the clue.
+  const main = [q({ id: "landmark-casbah-DZA", prompt: "In which country is Casbah of Algiers?", difficulty: "hard", answerIso: "DZA", clueType: "landmark" })];
+  const f = leakPolicyChecks({
+    main,
+    bonus: [],
+    leakedPlace: () => "Algiers",
+    fameOf: () => 522_403, // only a "partial hint" on fame alone
+    resembles: () => true, // ...but the name gives it away outright
+  });
+  assert.deepEqual(f.map((x) => x.check), ["famous-place leaks are tiered easy"]);
 });
