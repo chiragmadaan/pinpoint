@@ -602,7 +602,18 @@ export function assembleCalendar(
   const byDiff: Record<Difficulty, Question[]> = { easy: [], medium: [], hard: [] };
   for (const q of pool) byDiff[q.difficulty].push(q);
   const rng = mulberry32(42);
-  for (const d of ["easy", "medium", "hard"] as const) shuffle(byDiff[d], rng);
+  for (const d of ["easy", "medium", "hard"] as const) {
+    shuffle(byDiff[d], rng);
+    // Hand-written questions are a fraction of a percent of the pool but carry the facts worth
+    // remembering ("the only non-rectangular national flag"), and each one was verified by hand.
+    // Picking is first-match over a shuffled tier, so without this they compete on equal terms with
+    // thousands of generated questions and simply lose: 9 of 40 missed the calendar entirely.
+    // Stable partition keeps the shuffle's ordering within each group.
+    const curated = byDiff[d].filter((q) => q.source?.startsWith("curated"));
+    if (curated.length) {
+      byDiff[d] = [...curated, ...byDiff[d].filter((q) => !q.source?.startsWith("curated"))];
+    }
+  }
   const bonuses = [...bonusPool];
   shuffle(bonuses, rng);
 
@@ -613,6 +624,7 @@ export function assembleCalendar(
   const isRecent = (iso: string, day: number) => recent.some((r) => r.iso === iso && day - r.day < windowDays);
 
   const isPerson = (q: Question) => clueCategory(q.clueType) === "person";
+  const isCurated = (q: Question) => q.source?.startsWith("curated") ?? false;
   const diffs = ["easy", "medium", "hard"] as const;
   type Diff = (typeof diffs)[number];
 
@@ -636,6 +648,11 @@ export function assembleCalendar(
     const canRepeat = (q: Question) => (catCount[cat(q)] ?? 0) < (cat(q) === "person" ? 1 : 2);
     const underCap = (q: Question) => (typeCount[q.clueType] ?? 0) < maxPerType;
     return (
+      // Curated questions skip the country-recency window and the type cap. They are a fraction of
+      // a percent of the pool, individually verified, and carry the facts worth remembering — losing
+      // one because France came up three weeks ago is a bad trade. Heavy repetition of a popular
+      // country is acceptable; missing hand-written content is not.
+      arr.find((q) => ok(q) && freshCat(q) && isCurated(q)) ??
       arr.find((q) => ok(q) && freshCat(q) && underCap(q) && !isRecent(q.answerIso, day)) ??
       arr.find((q) => ok(q) && freshCat(q) && underCap(q)) ??
       arr.find((q) => ok(q) && freshCat(q)) ??

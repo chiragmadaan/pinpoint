@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-07T12:10:24.251Z",
+  "generatedAt": "2026-08-07T15:30:31.811Z",
   "calendar": {
     "days": 649,
     "from": "2026-08-07",
@@ -7,39 +7,39 @@
     "questionsUsed": 2596
   },
   "pool": {
-    "total": 6001,
-    "mandatory": 5062,
-    "bonus": 939,
+    "total": 6030,
+    "mandatory": 5087,
+    "bonus": 943,
     "byClueType": {
-      "locate": 173,
+      "locate": 174,
       "landmark": 289,
       "genre": 286,
       "festival": 116,
       "brand": 278,
       "river": 201,
-      "flag": 173,
+      "flag": 174,
       "birthplace": 1637,
       "nationality": 1189,
       "sport": 29,
       "drink": 4,
       "animal": 83,
-      "anthem": 87,
-      "border": 559,
+      "anthem": 88,
+      "border": 566,
       "dish": 79,
-      "capital": 167,
-      "tld": 174,
-      "calling-code": 170,
+      "capital": 168,
+      "tld": 175,
+      "calling-code": 171,
       "language": 76,
-      "highest-point": 157,
+      "highest-point": 158,
       "currency": 55,
-      "trivia": 4,
+      "trivia": 17,
       "nickname": 7,
-      "superlative": 8
+      "superlative": 10
     },
     "mandatoryByDifficulty": {
-      "easy": 933,
-      "medium": 2672,
-      "hard": 1457
+      "easy": 934,
+      "medium": 2684,
+      "hard": 1469
     }
   },
   "used": {
@@ -47,9 +47,9 @@
     "bonus": 649
   },
   "spare": {
-    "mandatory": 3115,
-    "bonus": 290
+    "mandatory": 3140,
+    "bonus": 294
   },
   "bindingConstraint": "mandatory",
-  "maxDays": 933
+  "maxDays": 934
 }

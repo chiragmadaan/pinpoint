@@ -55,8 +55,11 @@ const DISPUTED_PEAKS = new Set(["Velika Rudoka", "Đeravica", "Daravica", "Derav
  *   - obscure sovereign micro-states, or non-sovereign territories (incl. China-sensitive HK/Macao).
  */
 const NON_ANSWER_ISO = new Set([
-  // recognizable but un-findable (sub-tappable enclaves) — visible on the map, just not asked
-  "VAT", "MCO", "SMR", "LIE",
+  // Un-findable enclaves. Micro-state magnetism (see hittest.ts) now gives ~8px of tap tolerance,
+  // so these are SELECTABLE — but you still have to see them to aim, and at max zoom Vatican is
+  // 0.3px, Monaco 2px and San Marino 3.8px. Liechtenstein (4x7px) is visible enough to aim at and
+  // has been promoted to an answerable country.
+  "VAT", "MCO", "SMR",
   // obscure sovereign micro-states
   "FSM", "MHL", "TON", "WSM", "NRU", "KIR", "PLW", "SYC", "STP", "COM", "CPV",
   "VCT", "LCA", "KNA", "GRD", "DMA", "ATG",

@@ -179,6 +179,14 @@ export function compassPoint(bearing: number): string {
   return COMPASS[Math.round((((bearing % 360) + 360) % 360) / 45) % 8]!;
 }
 
+/** Largest on-screen dimension of a geometry, in projected px — how big it looks right now. */
+export function projectedMaxDimension(geom: Geometry, project: (ll: LonLat) => [number, number]): number {
+  const [minLon, minLat, maxLon, maxLat] = geometryBounds(geom);
+  const [ax, ay] = project([minLon, maxLat]);
+  const [bx, by] = project([maxLon, minLat]);
+  return Math.max(Math.abs(bx - ax), Math.abs(by - ay));
+}
+
 /** Shortest distance from planar point `p` to the segment `a`-`b` (same units as the inputs). */
 export function pointToSegmentDistance(
   p: [number, number],

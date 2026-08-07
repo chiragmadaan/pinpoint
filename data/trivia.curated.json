@@ -1,31 +1,503 @@
 [
-  { "id": "trivia-boer-war", "clueType": "trivia", "difficulty": "hard", "prompt": "In which country was the Boer War (1899–1902) mainly fought?", "answerIso": "ZAF", "acceptedIso": ["ZAF"], "source": "curated:history" },
-  { "id": "nickname-pirate-republic", "clueType": "nickname", "difficulty": "hard", "prompt": "Which country (Nassau) was the base of the early-1700s 'Pirate Republic'?", "answerIso": "BHS", "acceptedIso": ["BHS"], "source": "curated:history" },
-  { "id": "nickname-ceylon", "clueType": "nickname", "difficulty": "medium", "prompt": "Which country was formerly known as Ceylon?", "answerIso": "LKA", "acceptedIso": ["LKA"], "source": "curated:history" },
-  { "id": "nickname-siam", "clueType": "nickname", "difficulty": "medium", "prompt": "Which country was formerly known as Siam?", "answerIso": "THA", "acceptedIso": ["THA"], "source": "curated:history" },
-  { "id": "nickname-persia", "clueType": "nickname", "difficulty": "medium", "prompt": "Which country was formerly known as Persia?", "answerIso": "IRN", "acceptedIso": ["IRN"], "source": "curated:history" },
-  { "id": "nickname-abyssinia", "clueType": "nickname", "difficulty": "hard", "prompt": "Which country was formerly known as Abyssinia?", "answerIso": "ETH", "acceptedIso": ["ETH"], "source": "curated:history" },
-  { "id": "nickname-burma", "clueType": "nickname", "difficulty": "medium", "prompt": "Which country was formerly known as Burma?", "answerIso": "MMR", "acceptedIso": ["MMR"], "source": "curated:history" },
-  { "id": "nickname-zaire", "clueType": "nickname", "difficulty": "hard", "prompt": "Which country was formerly known as Zaire?", "answerIso": "COD", "acceptedIso": ["COD"], "source": "curated:history" },
-  { "id": "landmark-machu-picchu", "clueType": "landmark", "difficulty": "easy", "prompt": "Which country is home to Machu Picchu?", "answerIso": "PER", "acceptedIso": ["PER"], "source": "curated:landmark" },
-  { "id": "landmark-petra", "clueType": "landmark", "difficulty": "medium", "prompt": "Which country is home to the ancient city of Petra?", "answerIso": "JOR", "acceptedIso": ["JOR"], "source": "curated:landmark" },
-  { "id": "landmark-angkor-wat", "clueType": "landmark", "difficulty": "medium", "prompt": "Which country is home to Angkor Wat?", "answerIso": "KHM", "acceptedIso": ["KHM"], "source": "curated:landmark" },
-  { "id": "landmark-taj-mahal", "clueType": "landmark", "difficulty": "easy", "prompt": "The Taj Mahal is located in which country?", "answerIso": "IND", "acceptedIso": ["IND"], "source": "curated:landmark" },
-  { "id": "landmark-pyramids-giza", "clueType": "landmark", "difficulty": "easy", "prompt": "The Pyramids of Giza are in which country?", "answerIso": "EGY", "acceptedIso": ["EGY"], "source": "curated:landmark" },
-  { "id": "landmark-christ-redeemer", "clueType": "landmark", "difficulty": "easy", "prompt": "Christ the Redeemer overlooks Rio de Janeiro in which country?", "answerIso": "BRA", "acceptedIso": ["BRA"], "source": "curated:landmark" },
-  { "id": "landmark-great-barrier-reef", "clueType": "landmark", "difficulty": "easy", "prompt": "The Great Barrier Reef lies off the coast of which country?", "answerIso": "AUS", "acceptedIso": ["AUS"], "source": "curated:landmark" },
-  { "id": "trivia-statue-of-liberty-gift", "clueType": "trivia", "difficulty": "medium", "prompt": "Which country gifted the Statue of Liberty to the United States?", "answerIso": "FRA", "acceptedIso": ["FRA"], "source": "curated:history" },
-  { "id": "trivia-first-modern-olympics", "clueType": "trivia", "difficulty": "medium", "prompt": "Which country hosted the first modern Olympic Games in 1896?", "answerIso": "GRC", "acceptedIso": ["GRC"], "source": "curated:history" },
-  { "id": "trivia-maori", "clueType": "trivia", "difficulty": "medium", "prompt": "The Māori are the indigenous people of which country?", "answerIso": "NZL", "acceptedIso": ["NZL"], "source": "curated:culture" },
-  { "id": "superlative-most-pyramids", "clueType": "superlative", "difficulty": "hard", "prompt": "Which country has the most pyramids in the world?", "answerIso": "SDN", "acceptedIso": ["SDN"], "source": "curated:superlative" },
-  { "id": "superlative-largest-area", "clueType": "superlative", "difficulty": "easy", "prompt": "Which country is the largest in the world by area?", "answerIso": "RUS", "acceptedIso": ["RUS"], "source": "curated:superlative" },
-  { "id": "superlative-longest-coastline", "clueType": "superlative", "difficulty": "hard", "prompt": "Which country has the longest coastline in the world?", "answerIso": "CAN", "acceptedIso": ["CAN"], "source": "curated:superlative" },
-  { "id": "superlative-most-muslims", "clueType": "superlative", "difficulty": "medium", "prompt": "Which country has the world's largest Muslim population?", "answerIso": "IDN", "acceptedIso": ["IDN"], "source": "curated:superlative" },
-  { "id": "superlative-most-islands", "clueType": "superlative", "difficulty": "hard", "prompt": "Which country has the most islands in the world?", "answerIso": "SWE", "acceptedIso": ["SWE"], "source": "curated:superlative" },
-  { "id": "superlative-most-timezones", "clueType": "superlative", "difficulty": "hard", "prompt": "Which country spans the most time zones?", "answerIso": "FRA", "acceptedIso": ["FRA"], "source": "curated:superlative" },
-  { "id": "superlative-most-coffee", "clueType": "superlative", "difficulty": "medium", "prompt": "Which country produces the most coffee in the world?", "answerIso": "BRA", "acceptedIso": ["BRA"], "source": "curated:superlative" },
-  { "id": "superlative-largest-rainforest", "clueType": "superlative", "difficulty": "easy", "prompt": "Which country contains most of the Amazon rainforest?", "answerIso": "BRA", "acceptedIso": ["BRA"], "source": "curated:superlative" },
-  { "id": "landmark-eiffel-tower", "clueType": "landmark", "difficulty": "easy", "prompt": "In which country is the Eiffel Tower?", "answerIso": "FRA", "acceptedIso": ["FRA"], "source": "curated:landmark" },
-  { "id": "dish-sushi", "clueType": "dish", "difficulty": "easy", "prompt": "Which country did sushi originate in?", "answerIso": "JPN", "acceptedIso": ["JPN"], "source": "curated:dish" },
-  { "id": "dish-pizza", "clueType": "dish", "difficulty": "easy", "prompt": "Which country did pizza originate in?", "answerIso": "ITA", "acceptedIso": ["ITA"], "source": "curated:dish" }
+  {
+    "id": "trivia-boer-war",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "prompt": "In which country was the Boer War (1899–1902) mainly fought?",
+    "answerIso": "ZAF",
+    "acceptedIso": [
+      "ZAF"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-pirate-republic",
+    "clueType": "nickname",
+    "difficulty": "hard",
+    "prompt": "Which country (Nassau) was the base of the early-1700s 'Pirate Republic'?",
+    "answerIso": "BHS",
+    "acceptedIso": [
+      "BHS"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-ceylon",
+    "clueType": "nickname",
+    "difficulty": "medium",
+    "prompt": "Which country was formerly known as Ceylon?",
+    "answerIso": "LKA",
+    "acceptedIso": [
+      "LKA"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-siam",
+    "clueType": "nickname",
+    "difficulty": "medium",
+    "prompt": "Which country was formerly known as Siam?",
+    "answerIso": "THA",
+    "acceptedIso": [
+      "THA"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-persia",
+    "clueType": "nickname",
+    "difficulty": "medium",
+    "prompt": "Which country was formerly known as Persia?",
+    "answerIso": "IRN",
+    "acceptedIso": [
+      "IRN"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-abyssinia",
+    "clueType": "nickname",
+    "difficulty": "hard",
+    "prompt": "Which country was formerly known as Abyssinia?",
+    "answerIso": "ETH",
+    "acceptedIso": [
+      "ETH"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-burma",
+    "clueType": "nickname",
+    "difficulty": "medium",
+    "prompt": "Which country was formerly known as Burma?",
+    "answerIso": "MMR",
+    "acceptedIso": [
+      "MMR"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "nickname-zaire",
+    "clueType": "nickname",
+    "difficulty": "hard",
+    "prompt": "Which country was formerly known as Zaire?",
+    "answerIso": "COD",
+    "acceptedIso": [
+      "COD"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "landmark-machu-picchu",
+    "clueType": "landmark",
+    "difficulty": "easy",
+    "prompt": "Which country is home to Machu Picchu?",
+    "answerIso": "PER",
+    "acceptedIso": [
+      "PER"
+    ],
+    "source": "curated:landmark"
+  },
+  {
+    "id": "landmark-petra",
+    "clueType": "landmark",
+    "difficulty": "medium",
+    "prompt": "Which country is home to the ancient city of Petra?",
+    "answerIso": "JOR",
+    "acceptedIso": [
+      "JOR"
+    ],
+    "source": "curated:landmark"
+  },
+  {
+    "id": "landmark-angkor-wat",
+    "clueType": "landmark",
+    "difficulty": "medium",
+    "prompt": "Which country is home to Angkor Wat?",
+    "answerIso": "KHM",
+    "acceptedIso": [
+      "KHM"
+    ],
+    "source": "curated:landmark"
+  },
+  {
+    "id": "landmark-taj-mahal",
+    "clueType": "landmark",
+    "difficulty": "easy",
+    "prompt": "The Taj Mahal is located in which country?",
+    "answerIso": "IND",
+    "acceptedIso": [
+      "IND"
+    ],
+    "source": "curated:landmark"
+  },
+  {
+    "id": "landmark-pyramids-giza",
+    "clueType": "landmark",
+    "difficulty": "easy",
+    "prompt": "The Pyramids of Giza are in which country?",
+    "answerIso": "EGY",
+    "acceptedIso": [
+      "EGY"
+    ],
+    "source": "curated:landmark"
+  },
+  {
+    "id": "landmark-christ-redeemer",
+    "clueType": "landmark",
+    "difficulty": "easy",
+    "prompt": "Christ the Redeemer overlooks Rio de Janeiro in which country?",
+    "answerIso": "BRA",
+    "acceptedIso": [
+      "BRA"
+    ],
+    "source": "curated:landmark"
+  },
+  {
+    "id": "landmark-great-barrier-reef",
+    "clueType": "landmark",
+    "difficulty": "easy",
+    "prompt": "The Great Barrier Reef lies off the coast of which country?",
+    "answerIso": "AUS",
+    "acceptedIso": [
+      "AUS"
+    ],
+    "source": "curated:landmark"
+  },
+  {
+    "id": "trivia-statue-of-liberty-gift",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which country gifted the Statue of Liberty to the United States?",
+    "answerIso": "FRA",
+    "acceptedIso": [
+      "FRA"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "trivia-first-modern-olympics",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which country hosted the first modern Olympic Games in 1896?",
+    "answerIso": "GRC",
+    "acceptedIso": [
+      "GRC"
+    ],
+    "source": "curated:history"
+  },
+  {
+    "id": "trivia-maori",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "The Māori are the indigenous people of which country?",
+    "answerIso": "NZL",
+    "acceptedIso": [
+      "NZL"
+    ],
+    "source": "curated:culture"
+  },
+  {
+    "id": "superlative-most-pyramids",
+    "clueType": "superlative",
+    "difficulty": "hard",
+    "prompt": "Which country has the most pyramids in the world?",
+    "answerIso": "SDN",
+    "acceptedIso": [
+      "SDN"
+    ],
+    "source": "curated:superlative"
+  },
+  {
+    "id": "superlative-largest-area",
+    "clueType": "superlative",
+    "difficulty": "easy",
+    "prompt": "Which country is the largest in the world by area?",
+    "answerIso": "RUS",
+    "acceptedIso": [
+      "RUS"
+    ],
+    "source": "curated:superlative"
+  },
+  {
+    "id": "superlative-longest-coastline",
+    "clueType": "superlative",
+    "difficulty": "hard",
+    "prompt": "Which country has the longest coastline in the world?",
+    "answerIso": "CAN",
+    "acceptedIso": [
+      "CAN"
+    ],
+    "source": "curated:superlative"
+  },
+  {
+    "id": "superlative-most-muslims",
+    "clueType": "superlative",
+    "difficulty": "medium",
+    "prompt": "Which country has the world's largest Muslim population?",
+    "answerIso": "IDN",
+    "acceptedIso": [
+      "IDN"
+    ],
+    "source": "curated:superlative"
+  },
+  {
+    "id": "superlative-most-islands",
+    "clueType": "superlative",
+    "difficulty": "hard",
+    "prompt": "Which country has the most islands in the world?",
+    "answerIso": "SWE",
+    "acceptedIso": [
+      "SWE"
+    ],
+    "source": "curated:superlative"
+  },
+  {
+    "id": "superlative-most-timezones",
+    "clueType": "superlative",
+    "difficulty": "hard",
+    "prompt": "Which country spans the most time zones?",
+    "answerIso": "FRA",
+    "acceptedIso": [
+      "FRA"
+    ],
+    "source": "curated:superlative"
+  },
+  {
+    "id": "superlative-most-coffee",
+    "clueType": "superlative",
+    "difficulty": "medium",
+    "prompt": "Which country produces the most coffee in the world?",
+    "answerIso": "BRA",
+    "acceptedIso": [
+      "BRA"
+    ],
+    "source": "curated:superlative"
+  },
+  {
+    "id": "superlative-largest-rainforest",
+    "clueType": "superlative",
+    "difficulty": "easy",
+    "prompt": "Which country contains most of the Amazon rainforest?",
+    "answerIso": "BRA",
+    "acceptedIso": [
+      "BRA"
+    ],
+    "source": "curated:superlative"
+  },
+  {
+    "id": "landmark-eiffel-tower",
+    "clueType": "landmark",
+    "difficulty": "easy",
+    "prompt": "In which country is the Eiffel Tower?",
+    "answerIso": "FRA",
+    "acceptedIso": [
+      "FRA"
+    ],
+    "source": "curated:landmark"
+  },
+  {
+    "id": "dish-sushi",
+    "clueType": "dish",
+    "difficulty": "easy",
+    "prompt": "Which country did sushi originate in?",
+    "answerIso": "JPN",
+    "acceptedIso": [
+      "JPN"
+    ],
+    "source": "curated:dish"
+  },
+  {
+    "id": "dish-pizza",
+    "clueType": "dish",
+    "difficulty": "easy",
+    "prompt": "Which country did pizza originate in?",
+    "answerIso": "ITA",
+    "acceptedIso": [
+      "ITA"
+    ],
+    "source": "curated:dish"
+  },
+  {
+    "id": "trivia-nonrect-flag",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which country has the world's only non-rectangular national flag?",
+    "answerIso": "NPL",
+    "acceptedIso": [
+      "NPL"
+    ],
+    "fact": "The flag of Nepal is a double pennon — the only non-rectangular national flag, and the only one taller than it is wide.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-uk-live-work",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Citizens of which country may live and work in the UK without a visa?",
+    "answerIso": "IRL",
+    "acceptedIso": [
+      "IRL"
+    ],
+    "fact": "The Common Travel Area lets British and Irish citizens move, live and work freely between the two states.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-enclave-zaf",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which country is completely surrounded by South Africa?",
+    "answerIso": "LSO",
+    "acceptedIso": [
+      "LSO"
+    ],
+    "fact": "Lesotho is the largest of only three sovereign states entirely enclosed by another country.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-two-sided-flag",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "prompt": "Which country has the only national flag with a different design on each side?",
+    "answerIso": "PRY",
+    "acceptedIso": [
+      "PRY"
+    ],
+    "fact": "Paraguay's flag is the only national flag worldwide with a unique design on each side.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-oldest-parliament",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which country's parliament, founded in 930, is the oldest in the world?",
+    "answerIso": "ISL",
+    "acceptedIso": [
+      "ISL"
+    ],
+    "fact": "Iceland's Althing was established in 930 and is the oldest legislature in the world.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "superlative-salt-flat",
+    "clueType": "superlative",
+    "difficulty": "medium",
+    "prompt": "Which country contains the world's largest salt flat?",
+    "answerIso": "BOL",
+    "acceptedIso": [
+      "BOL"
+    ],
+    "fact": "Salar de Uyuni in Bolivia covers about 10,582 square kilometres — the largest salt flat on Earth.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "superlative-tallest-waterfall",
+    "clueType": "superlative",
+    "difficulty": "medium",
+    "prompt": "Which country is home to the world's tallest waterfall?",
+    "answerIso": "VEN",
+    "acceptedIso": [
+      "VEN"
+    ],
+    "fact": "Angel Falls in Venezuela drops 979 metres — the tallest uninterrupted waterfall in the world.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-gnh",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which country measures its progress using Gross National Happiness?",
+    "answerIso": "BTN",
+    "acceptedIso": [
+      "BTN"
+    ],
+    "fact": "Gross National Happiness is the guiding philosophy of the government of Bhutan.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-first-women-vote",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which country was the first in the world where all women could vote?",
+    "answerIso": "NZL",
+    "acceptedIso": [
+      "NZL"
+    ],
+    "fact": "New Zealand granted all women the vote in 1893, after a campaign led by Kate Sheppard.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-first-woman-pm",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "prompt": "Which country elected the world's first female prime minister, in 1960?",
+    "answerIso": "LKA",
+    "acceptedIso": [
+      "LKA"
+    ],
+    "fact": "Sirimavo Bandaranaike of Ceylon (now Sri Lanka) was the first woman in the world elected prime minister.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-square-flag",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which country's national flag is square rather than rectangular?",
+    "answerIso": "CHE",
+    "acceptedIso": [
+      "CHE",
+      "VAT"
+    ],
+    "fact": "Switzerland and Vatican City are the only states whose national flags are square.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-map-flag",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "prompt": "Which country's flag shows a map of the island it occupies?",
+    "answerIso": "CYP",
+    "acceptedIso": [
+      "CYP"
+    ],
+    "fact": "The flag of Cyprus shows the island in copper-orange, for the copper ore it was probably named after.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-doubly-landlocked",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "prompt": "Which country is doubly landlocked — every one of its neighbours is landlocked too?",
+    "answerIso": "UZB",
+    "acceptedIso": [
+      "UZB",
+      "LIE"
+    ],
+    "fact": "Only two countries are doubly landlocked — Uzbekistan and Liechtenstein. Reaching the sea from either means crossing at least two borders.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-doubly-landlocked-asia",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "prompt": "Which Central Asian country is doubly landlocked — every neighbour is landlocked too?",
+    "answerIso": "UZB",
+    "acceptedIso": [
+      "UZB"
+    ],
+    "fact": "Only two countries are doubly landlocked — Uzbekistan and Liechtenstein. Reaching the sea from either means crossing at least two borders.",
+    "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-doubly-landlocked-europe",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "prompt": "Which European country is doubly landlocked — every neighbour is landlocked too?",
+    "answerIso": "LIE",
+    "acceptedIso": [
+      "LIE"
+    ],
+    "fact": "Only two countries are doubly landlocked — Uzbekistan and Liechtenstein. Reaching the sea from either means crossing at least two borders.",
+    "source": "curated:only-country"
+  }
 ]

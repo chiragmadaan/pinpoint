@@ -75,6 +75,43 @@ test("when polygons overlap, a tap resolves to the SMALLER country (micro-state 
   assert.equal(resolveTap(x, y, proj, [COARSE, ENCLAVE]), "SGP");
 });
 
+// --- micro-state magnetism ----------------------------------------------------------------------
+// A landlocked micro-state is ~4x7px even at max zoom and sits INSIDE its neighbour, so a near-miss
+// lands in the big country by containment and snapping can never rescue it. Nobody aiming at
+// Switzerland aims 5px from the Liechtenstein border, so a tiny country close to the tap wins.
+const BIGCOUNTRY: MapFeature = {
+  iso: "CHE",
+  geometry: { type: "Polygon", coordinates: [[[0, 0], [40, 0], [40, 40], [0, 40], [0, 0]]] },
+};
+const MICRO: MapFeature = {
+  iso: "LIE",
+  geometry: { type: "Polygon", coordinates: [[[20, 20], [20.4, 20], [20.4, 20.7], [20, 20.7], [20, 20]]] },
+};
+
+test("a tap just outside a micro-state prefers it over the country containing the tap", () => {
+  const [x, y] = proj.forward([19.5, 20.3]); // ~0.5px outside LIE, inside CHE
+  assert.equal(resolveTap(x, y, proj, [BIGCOUNTRY, MICRO]), "LIE");
+});
+
+test("a tap inside the micro-state still resolves to it", () => {
+  const [x, y] = proj.forward([20.2, 20.35]);
+  assert.equal(resolveTap(x, y, proj, [BIGCOUNTRY, MICRO]), "LIE");
+});
+
+test("magnetism is local — a tap well away from the micro-state gets the big country", () => {
+  const [x, y] = proj.forward([5, 5]);
+  assert.equal(resolveTap(x, y, proj, [BIGCOUNTRY, MICRO]), "CHE");
+});
+
+test("magnetism does not fire for a merely-smaller neighbour, only a much smaller one", () => {
+  // Two comparable countries side by side: tapping inside one must not jump to the other, which is
+  // what a purely absolute size threshold would do at low zoom where everything is small on screen.
+  const A: MapFeature = { iso: "AAA", geometry: { type: "Polygon", coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] } };
+  const B: MapFeature = { iso: "BBB", geometry: { type: "Polygon", coordinates: [[[10, 0], [18, 0], [18, 10], [10, 10], [10, 0]]] } };
+  const [x, y] = proj.forward([9.7, 5]); // inside A, a hair from B's border
+  assert.equal(resolveTap(x, y, proj, [A, B]), "AAA");
+});
+
 test("snapPx tolerance is measured in pixels: within snaps, beyond does not", () => {
   const [x, y] = proj.forward([-1, 0.5]); // ~1px west of SMALL's border, open ocean
   assert.equal(resolveTap(x, y, proj, [BIG, SMALL], { snapPx: 24 }), "SML");
