@@ -23,9 +23,36 @@ export function puzzleForDate(calendar: PuzzleCalendar, key: string): DailyPuzzl
   return calendar.puzzles.find((p) => p.date === key) ?? null;
 }
 
-/** Today's puzzle (local time). Returns null if we've run out of pre-generated content — top up. */
+/** Parse a "YYYY-MM-DD" key as a LOCAL date, matching how dateKey() builds them. */
+function parseKey(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number) as [number, number, number];
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * Today's puzzle (local time), never null while the calendar has any content.
+ *
+ * Once the pre-generated dates run out we WRAP to the start rather than giving up. Returning null
+ * here used to brick the game outright: the app fell back to `puzzles[0]`, whose date is in the
+ * past, so `hasCompleted` reported that day already finished and every player — returning and brand
+ * new alike — was stuck on "Come back tomorrow!" forever, with no way out.
+ *
+ * The wrapped puzzle is re-dated to TODAY, which is the part that matters. Replaying old *content*
+ * after ~2 years is a mild cost; replaying an old *date* is what broke history, streaks and the
+ * share text. Topping the calendar up is still the real answer — `pnpm validate` warns well before
+ * the runway ends — but the game degrades quietly instead of dying.
+ */
 export function todaysPuzzle(calendar: PuzzleCalendar, now: Date = new Date()): DailyPuzzle | null {
-  return puzzleForDate(calendar, todayKey(now));
+  const key = todayKey(now);
+  const exact = puzzleForDate(calendar, key);
+  if (exact) return exact;
+
+  const { puzzles } = calendar;
+  if (puzzles.length === 0) return null; // genuinely nothing to serve
+  const start = parseKey(puzzles[0]!.date);
+  const dayOffset = Math.round((parseKey(key).getTime() - start.getTime()) / 86_400_000);
+  const i = ((dayOffset % puzzles.length) + puzzles.length) % puzzles.length; // also handles before-start
+  return { ...puzzles[i]!, date: key };
 }
 
 /** Whether the player has already finished (all 3 answered) a given day. */

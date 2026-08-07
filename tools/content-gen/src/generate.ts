@@ -656,7 +656,13 @@ export async function buildCandidates(): Promise<CandidateBuild> {
 }
 
 /** Types that are never part of the mandatory three — too obscure to gate the daily on. */
-export const BONUS_TYPES = new Set(["calling-code", "tld", "highest-point", "currency", "anthem"]);
+export const BONUS_TYPES = new Set([
+  "calling-code", "tld", "highest-point", "currency", "anthem",
+  // Moved here to relieve the real constraint: the bonus pool was 99% consumed (9 spare) while the
+  // mandatory pool sat at 36% (3,396 spare), so the calendar length was bounded by bonus supply, not
+  // by content. Both are obscure enough to suit an unlocked-on-3/3 reward.
+  "river", "animal",
+]);
 
 async function main() {
   const { all, countries, nameOf } = await buildCandidates();
@@ -711,6 +717,43 @@ async function main() {
   }
   const factCount = shipped.filter((q) => q.fact).length;
   console.log(`Reveal facts: ${factCount}/${shipped.length} (${Math.round((factCount / shipped.length) * 100)}%)`);
+
+  // Persist pool + usage so runway questions are answerable without re-running the pipeline.
+  const countBy = (qs: Question[], key: (q: Question) => string) =>
+    qs.reduce<Record<string, number>>((acc, q) => ((acc[key(q)] = (acc[key(q)] ?? 0) + 1), acc), {});
+  const usedMain = calendar.puzzles.length * 3;
+  const usedBonus = calendar.puzzles.filter((p) => p.bonus).length;
+  const stats = {
+    generatedAt: new Date().toISOString(),
+    calendar: {
+      days: calendar.puzzles.length,
+      from: calendar.puzzles[0]?.date,
+      to: calendar.puzzles.at(-1)?.date,
+      questionsUsed: usedMain + usedBonus,
+    },
+    pool: {
+      total: all.length,
+      mandatory: mandatory.length,
+      bonus: bonusPool.length,
+      byClueType: countBy(all, (q) => q.clueType),
+      mandatoryByDifficulty: countBy(mandatory, (q) => q.difficulty),
+    },
+    used: { mandatory: usedMain, bonus: usedBonus },
+    spare: { mandatory: mandatory.length - usedMain, bonus: bonusPool.length - usedBonus },
+    /**
+     * Which pool runs out first — that is what actually bounds the calendar. A day needs one bonus
+     * question and one of EACH difficulty, so the ceiling is min(bonus pool, scarcest tier).
+     */
+    bindingConstraint:
+      bonusPool.length < Math.min(...Object.values(countBy(mandatory, (q) => q.difficulty)))
+        ? "bonus"
+        : "mandatory",
+    maxDays: Math.min(bonusPool.length, Math.min(...Object.values(countBy(mandatory, (q) => q.difficulty)))),
+  };
+  await writeFile(url("../../../data/generation-stats.json"), JSON.stringify(stats, null, 2) + "\n");
+  console.log(
+    `Pool: ${all.length} candidates — used ${usedMain + usedBonus}, spare ${stats.spare.mandatory} mandatory / ${stats.spare.bonus} bonus (binding: ${stats.bindingConstraint})`,
+  );
 
   await writeFile(url("../../../data/questions.json"), JSON.stringify(calendar));
   await writeFile(url("../../../apps/web/public/questions.json"), JSON.stringify(calendar));

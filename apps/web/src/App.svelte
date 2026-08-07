@@ -270,8 +270,11 @@
     features = feats;
     names = Object.fromEntries(feats.map((f) => [f.iso, f.name ?? f.iso]));
     adjacency = adj;
-    // Fall back to the first sample day if today's isn't in the (sample) calendar.
-    currentPuzzle = todaysPuzzle(calendar) ?? calendar.puzzles[0] ?? null;
+    // todaysPuzzle wraps to the start of the calendar once the dates run out, re-dated to today.
+    // The old `?? calendar.puzzles[0]` fallback here is exactly what bricked the game on exhaustion:
+    // that puzzle carries a PAST date, so hasCompleted() said it was already done and the player was
+    // permanently stuck on the results screen.
+    currentPuzzle = todaysPuzzle(calendar);
     loaded = true;
     if (!currentPuzzle) return;
 

@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-08-07T12:10:24.251Z",
+  "calendar": {
+    "days": 649,
+    "from": "2026-08-07",
+    "to": "2028-05-16",
+    "questionsUsed": 2596
+  },
+  "pool": {
+    "total": 6001,
+    "mandatory": 5062,
+    "bonus": 939,
+    "byClueType": {
+      "locate": 173,
+      "landmark": 289,
+      "genre": 286,
+      "festival": 116,
+      "brand": 278,
+      "river": 201,
+      "flag": 173,
+      "birthplace": 1637,
+      "nationality": 1189,
+      "sport": 29,
+      "drink": 4,
+      "animal": 83,
+      "anthem": 87,
+      "border": 559,
+      "dish": 79,
+      "capital": 167,
+      "tld": 174,
+      "calling-code": 170,
+      "language": 76,
+      "highest-point": 157,
+      "currency": 55,
+      "trivia": 4,
+      "nickname": 7,
+      "superlative": 8
+    },
+    "mandatoryByDifficulty": {
+      "easy": 933,
+      "medium": 2672,
+      "hard": 1457
+    }
+  },
+  "used": {
+    "mandatory": 1947,
+    "bonus": 649
+  },
+  "spare": {
+    "mandatory": 3115,
+    "bonus": 290
+  },
+  "bindingConstraint": "mandatory",
+  "maxDays": 933
+}

@@ -128,6 +128,27 @@ async function main() {
   lines.push(`| Failures | ${fails.length} |`, `| Warnings | ${warns.length} |`);
   lines.push(`| Structural checks | ${STRUCTURAL_CHECK_NAMES.length - new Set(findings.map((f) => f.check)).size >= 0 ? "" : ""}${STRUCTURAL_CHECK_NAMES.filter((n) => named(n).length === 0).length}/${STRUCTURAL_CHECK_NAMES.length} passed |`, "");
 
+  // Pool utilisation, from the stats the generator persists — answers "how much runway is left?"
+  // without re-running the pipeline (which is what it used to take).
+  try {
+    const st = JSON.parse(await readFile(url("../../../data/generation-stats.json"), "utf8")) as {
+      generatedAt: string;
+      pool: { total: number; mandatory: number; bonus: number };
+      used: { mandatory: number; bonus: number };
+      spare: { mandatory: number; bonus: number };
+      bindingConstraint: string;
+    };
+    const pct = (used: number, total: number) => (total ? Math.round((used / total) * 100) : 0);
+    lines.push(`## Pool utilisation`, "");
+    lines.push(`_Generated ${st.generatedAt}._`, "");
+    lines.push(`| Pool | Total | Used | Spare | Utilisation |`, `|---|---|---|---|---|`);
+    lines.push(`| Mandatory | ${st.pool.mandatory} | ${st.used.mandatory} | ${st.spare.mandatory} | ${pct(st.used.mandatory, st.pool.mandatory)}% |`);
+    lines.push(`| Bonus | ${st.pool.bonus} | ${st.used.bonus} | ${st.spare.bonus} | ${pct(st.used.bonus, st.pool.bonus)}% |`);
+    lines.push("", `Binding constraint: **${st.bindingConstraint}** — this is the pool that caps calendar length.`, "");
+  } catch {
+    lines.push(`## Pool utilisation`, "", `_No data/generation-stats.json — run \`pnpm content:gen\`._`, "");
+  }
+
   lines.push(`## Structural checks`, "");
   for (const name of STRUCTURAL_CHECK_NAMES) {
     const hits = named(name);
