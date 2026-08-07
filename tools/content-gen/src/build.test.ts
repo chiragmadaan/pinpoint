@@ -5,6 +5,7 @@ import {
   assembleCalendar,
   assignDifficulty,
   buildUniqueValue,
+  expandTerritories,
   canonicalizeLanguage,
   withCategory,
   computeObscurity,
@@ -257,4 +258,70 @@ test("assembleCalendar allows two of a non-person category (e.g. easy + hard Loc
   assert.equal(cal.puzzles.length, 1);
   const types = cal.puzzles[0]!.questions.map((q) => q.clueType);
   assert.equal(types.filter((t) => t === "locate").length, 2, "two locates are allowed in one day");
+});
+
+test("expandTerritories accepts a country's dependencies — for EVERY accepted answer, not just answerIso", () => {
+  const deps = { FRA: ["GUF", "NCL"], DNK: ["GRL"], USA: ["PRI"] };
+  const onMap = new Set(["GUF", "NCL", "GRL", "PRI"]);
+  const q = { answerIso: "ISL", acceptedIso: ["DNK", "ISL", "FRA"] } as never;
+  const out = expandTerritories(q, deps, onMap);
+  // Greenland must count on a multi-answer question that accepts Denmark, even though Denmark is
+  // not the nominal answerIso. Before multi-answer content acceptedIso was always [answerIso], so
+  // expanding only the answerIso happened to be equivalent; it no longer is.
+  assert.deepEqual([...out.acceptedIso].sort(), ["DNK", "FRA", "GRL", "GUF", "ISL", "NCL"]);
+  // USA is not an accepted answer, so Puerto Rico must not leak in.
+  assert.ok(!out.acceptedIso.includes("PRI"));
+  // The reveal shades only the real set members — not the territories that merely score as correct.
+  assert.deepEqual(out.revealIso, ["DNK", "ISL", "FRA"]);
+});
+
+test("expandTerritories skips dependencies that aren't drawn on the map", () => {
+  const q = { answerIso: "FRA", acceptedIso: ["FRA"] } as never;
+  const out = expandTerritories(q, { FRA: ["GUF", "ATF"] }, new Set(["GUF"]));
+  assert.deepEqual(out.acceptedIso, ["FRA", "GUF"]); // ATF isn't on the map
+});
+
+test("assembleCalendar spaces questions from the same family apart", () => {
+  // Six questions all sliced from one fact, plus filler so days can be completed without them.
+  const fam = Array.from({ length: 6 }, (_, i) => ({
+    id: `opec-${i}`, clueType: "trivia", difficulty: "easy", prompt: `q${i}`,
+    answerIso: "SAU", acceptedIso: ["SAU"], source: "curated:set", family: "opec",
+  })) as unknown as Question[];
+  // Varied clue types: a day needs three distinct-ish categories, so single-type filler would
+  // stall the calendar on day one and hide what this test is actually checking.
+  const TYPES = ["capital", "flag", "river", "language", "currency", "landmark"] as const;
+  const filler = Array.from({ length: 1800 }, (_, i) => ({
+    id: `f-${i}`, clueType: TYPES[i % TYPES.length], difficulty: (["easy", "medium", "hard"] as const)[i % 3],
+    prompt: `f${i}`, answerIso: `X${i}`, acceptedIso: [`X${i}`],
+  })) as unknown as Question[];
+  const cal = assembleCalendar([...fam, ...filler], "2026-01-01", 300, 45, 1, []);
+  const days: number[] = [];
+  cal.puzzles.forEach((p, i) => { if (p.questions.some((q) => q.family === "opec")) days.push(i); });
+  assert.ok(days.length >= 2, `expected several family members placed, got ${days.length}`);
+  for (let i = 1; i < days.length; i++) {
+    assert.ok(days[i]! - days[i - 1]! >= 60, `family questions ${days[i - 1]} and ${days[i]} are too close`);
+  }
+  // Never two from the same family on one day.
+  for (const p of cal.puzzles) {
+    assert.ok(p.questions.filter((q) => q.family === "opec").length <= 1);
+  }
+});
+
+test("family spacing also governs the bonus slot", () => {
+  // Bonus questions are drawn from a separate pool, so a family constrained in the mandatory three
+  // could otherwise reappear as the next day's bonus.
+  const bonus = Array.from({ length: 6 }, (_, i) => ({
+    id: `b-${i}`, clueType: "anthem", difficulty: "hard", prompt: `b${i}`,
+    answerIso: "SAU", acceptedIso: ["SAU"], family: "opec",
+  })) as unknown as Question[];
+  const TYPES = ["capital", "flag", "river", "language", "currency", "landmark"] as const;
+  const filler = Array.from({ length: 1800 }, (_, i) => ({
+    id: `f-${i}`, clueType: TYPES[i % TYPES.length], difficulty: (["easy", "medium", "hard"] as const)[i % 3],
+    prompt: `f${i}`, answerIso: `X${i}`, acceptedIso: [`X${i}`],
+  })) as unknown as Question[];
+  const cal = assembleCalendar(filler, "2026-01-01", 300, 45, 1, bonus);
+  const days: number[] = [];
+  cal.puzzles.forEach((p, i) => { if (p.bonus?.family === "opec") days.push(i); });
+  assert.ok(days.length >= 2, `expected several bonus family members, got ${days.length}`);
+  for (let i = 1; i < days.length; i++) assert.ok(days[i]! - days[i - 1]! >= 60);
 });

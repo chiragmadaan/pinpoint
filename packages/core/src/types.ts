@@ -59,6 +59,13 @@ export interface Question {
    */
   acceptedIso: Iso3[];
   /**
+   * Countries to highlight on the reveal, when that differs from `acceptedIso`. Scoring always uses
+   * `acceptedIso`; this exists because the two answer different questions. Tapping Pitcairn counts
+   * as the United Kingdom, so it is *accepted* on "name one of the G7" — but shading it on the
+   * reveal would tell the player Pitcairn is a G7 country. Defaults to `acceptedIso`.
+   */
+  revealIso?: Iso3[];
+  /**
    * One-line "did you know" shown on the reveal, for correct AND incorrect guesses — turns a miss
    * into a small learning moment (e.g. "Sheikh Mujibur Rahman — founding president of Bangladesh").
    * Sourced from the subject's Wikidata description; never shown before the answer, so it may
@@ -67,6 +74,13 @@ export interface Question {
   fact?: string;
   /** Provenance for auditing/regeneration (e.g. Wikidata Q-ids used). */
   source?: string;
+  /**
+   * Groups questions derived from the SAME underlying fact, so the calendar can space them out.
+   * One verified fact yields a whole family — OPEC's roster gives "name a member", "name the only
+   * South American member", "name a founder", "name a country that left" — and without this they
+   * cluster, because curated questions are placed first and skip the country-recency window.
+   */
+  family?: string;
   /**
    * True for facts that can change over time ("most X", "highest Y"). Time-sensitive questions
    * MUST carry `asOf` and be periodically re-validated before reuse; static facts (capital, river)

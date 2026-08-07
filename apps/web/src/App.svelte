@@ -140,7 +140,8 @@
     if (session?.phase !== "question") return;
     session = timeUp(session, adjacency, scoreCfg());
     const r = session.results.at(-1)!;
-    map?.reveal(r.guessIso, currentQuestion(session)?.acceptedIso ?? r.correctIso);
+    const q = currentQuestion(session);
+    map?.reveal(r.guessIso, q?.revealIso ?? q?.acceptedIso ?? r.correctIso);
     void syncBar();
   }
   onDestroy(stopTimer);
@@ -326,7 +327,8 @@
     stopTimer();
     session = submitGuess(session, adjacency, scoreCfg());
     const r = session.results.at(-1)!;
-    map?.reveal(r.guessIso, currentQuestion(session)?.acceptedIso ?? r.correctIso);
+    const q = currentQuestion(session);
+    map?.reveal(r.guessIso, q?.revealIso ?? q?.acceptedIso ?? r.correctIso);
     void syncBar(); // animate the trophy bar (fill-then-rollover on unlock)
   }
 

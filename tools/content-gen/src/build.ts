@@ -598,6 +598,7 @@ export function assembleCalendar(
   windowDays = 45,
   typeCap = 0.28, // no clue type may exceed this share of all questions (prevents birthplace flooding)
   bonusPool: Question[] = [], // obscure "bonus" questions, one attached per day (unlocked on 3/3)
+  familyWindowDays = 60, // min gap between two questions sliced from the same underlying fact
 ): PuzzleCalendar {
   const byDiff: Record<Difficulty, Question[]> = { easy: [], medium: [], hard: [] };
   for (const q of pool) byDiff[q.difficulty].push(q);
@@ -619,9 +620,15 @@ export function assembleCalendar(
 
   const usedQ = new Set<string>();
   const recent: { iso: string; day: number }[] = []; // country recency
+  const recentFam: { fam: string; day: number }[] = []; // same-underlying-fact recency
   const typeCount: Record<string, number> = {};
   const maxPerType = Math.ceil(maxDays * 3 * typeCap);
   const isRecent = (iso: string, day: number) => recent.some((r) => r.iso === iso && day - r.day < windowDays);
+  // Unlike country recency this is NOT relaxed for curated questions: it is the one constraint that
+  // exists *because* of them. A single verified fact yields several questions, and since curated
+  // content is placed first-match it would otherwise land on consecutive days.
+  const isRecentFam = (q: Question, day: number) =>
+    q.family !== undefined && recentFam.some((r) => r.fam === q.family && day - r.day < familyWindowDays);
 
   const isPerson = (q: Question) => clueCategory(q.clueType) === "person";
   const isCurated = (q: Question) => q.source?.startsWith("curated") ?? false;
@@ -639,10 +646,12 @@ export function assembleCalendar(
     banIso: Set<string>,
     catCount: Record<string, number>,
     usedToday: Set<string>,
+    famToday: Set<string>,
     day: number,
   ): Question | null => {
     const ok = (q: Question) =>
-      isPerson(q) === wantPerson && !usedQ.has(q.id) && !usedToday.has(q.id) && !banIso.has(q.answerIso);
+      isPerson(q) === wantPerson && !usedQ.has(q.id) && !usedToday.has(q.id) && !banIso.has(q.answerIso) &&
+      !isRecentFam(q, day) && !famToday.has(q.family ?? "");
     const cat = (q: Question) => clueCategory(q.clueType);
     const freshCat = (q: Question) => (catCount[cat(q)] ?? 0) === 0;
     const canRepeat = (q: Question) => (catCount[cat(q)] ?? 0) < (cat(q) === "person" ? 1 : 2);
@@ -668,14 +677,16 @@ export function assembleCalendar(
     const banIso = new Set<string>();
     const catCount: Record<string, number> = {};
     const usedToday = new Set<string>();
+    const famToday = new Set<string>();
     const picks = {} as Record<Diff, Question>;
     for (const diff of diffs) {
-      const q = pickTyped(byDiff[diff], diff === personTier, banIso, catCount, usedToday, day);
+      const q = pickTyped(byDiff[diff], diff === personTier, banIso, catCount, usedToday, famToday, day);
       if (!q) return null;
       picks[diff] = q;
       banIso.add(q.answerIso);
       catCount[clueCategory(q.clueType)] = (catCount[clueCategory(q.clueType)] ?? 0) + 1;
       usedToday.add(q.id);
+      if (q.family) famToday.add(q.family);
     }
     return picks;
   };
@@ -712,16 +723,42 @@ export function assembleCalendar(
       usedQ.add(q.id);
       typeCount[q.clueType] = (typeCount[q.clueType] ?? 0) + 1;
       recent.push({ iso: q.answerIso, day });
+      if (q.family) recentFam.push({ fam: q.family, day });
     }
     const dayIsos = new Set(diffs.map((d) => picks![d].answerIso));
-    const bonus = bonuses.find((b) => !usedQ.has(b.id) && !dayIsos.has(b.answerIso));
+    const dayFams = new Set(diffs.map((d) => picks![d].family).filter(Boolean));
+    const bonus = bonuses.find(
+      (b) => !usedQ.has(b.id) && !dayIsos.has(b.answerIso) && !isRecentFam(b, day) && !dayFams.has(b.family),
+    );
     const day3: DailyPuzzle = { date: fmtKey(dt), questions: [picks.easy, picks.medium, picks.hard] };
     if (bonus) {
       usedQ.add(bonus.id);
+      if (bonus.family) recentFam.push({ fam: bonus.family, day });
       day3.bonus = bonus;
     }
     puzzles.push(day3);
     dt = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1);
   }
   return { version: 1, puzzles };
+}
+
+/**
+ * Accept a country's dependent territories as correct taps: French Guiana *is* France, so a player
+ * who taps it has identified the right country and shouldn't be marked wrong.
+ *
+ * Applied to every entry in `acceptedIso`, not just `answerIso`. Those were the same thing while
+ * each question had a single answer, but a multi-answer question ("name one of the five Nordic
+ * countries") nominates one member as `answerIso` and the rest would otherwise miss out — tapping
+ * Greenland would be wrong while tapping Iceland's territories was fine.
+ */
+export function expandTerritories<T extends { answerIso: string; acceptedIso: string[] }>(
+  q: T,
+  dependencies: Record<string, string[]>,
+  onMap: ReadonlySet<string>,
+): T {
+  const deps = q.acceptedIso.flatMap((iso) => (dependencies[iso] ?? []).filter((d) => onMap.has(d)));
+  if (!deps.length) return q;
+  // Keep the pre-expansion set for the reveal: the territories are correct *taps*, but shading them
+  // would claim they're members of the set the clue asked about.
+  return { ...q, revealIso: q.acceptedIso, acceptedIso: [...new Set([...q.acceptedIso, ...deps])] };
 }

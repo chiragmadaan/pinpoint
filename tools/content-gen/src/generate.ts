@@ -15,6 +15,7 @@ import {
   buildLocate,
   buildPeopleQuestions,
   buildUniqueValue,
+  expandTerritories,
   canonicalizeLanguage,
   isSensitiveText,
   matchedPlaceName,
@@ -647,10 +648,7 @@ export async function buildCandidates(): Promise<CandidateBuild> {
   const all: Question[] = [...autoQs, ...curated]
     .filter((q) => !isSensitiveText(q.prompt) && !DISPUTED_ISO.has(q.answerIso) && allowed.has(q.answerIso))
     // Tapping a country's own territory counts as correct (see DEPENDENCIES).
-    .map((q) => {
-      const deps = (DEPENDENCIES[q.answerIso] ?? []).filter((d) => onMap.has(d));
-      return deps.length ? { ...q, acceptedIso: [...new Set([...q.acceptedIso, ...deps])] } : q;
-    });
+    .map((q) => expandTerritories(q, DEPENDENCIES, onMap));
 
   // Obscure, near-unanswerable types move OUT of the mandatory 3 into the bonus (unlocked on 3/3).
   // Anthems join these: near-total country coverage, but recognizing one by title is too hard to

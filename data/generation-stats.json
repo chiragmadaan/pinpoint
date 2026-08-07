@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-07T15:30:31.811Z",
+  "generatedAt": "2026-08-07T22:49:56.558Z",
   "calendar": {
     "days": 649,
     "from": "2026-08-07",
@@ -7,8 +7,8 @@
     "questionsUsed": 2596
   },
   "pool": {
-    "total": 6030,
-    "mandatory": 5087,
+    "total": 6058,
+    "mandatory": 5115,
     "bonus": 943,
     "byClueType": {
       "locate": 174,
@@ -32,14 +32,14 @@
       "language": 76,
       "highest-point": 158,
       "currency": 55,
-      "trivia": 17,
+      "trivia": 45,
       "nickname": 7,
       "superlative": 10
     },
     "mandatoryByDifficulty": {
-      "easy": 934,
-      "medium": 2684,
-      "hard": 1469
+      "easy": 942,
+      "medium": 2698,
+      "hard": 1475
     }
   },
   "used": {
@@ -47,9 +47,9 @@
     "bonus": 649
   },
   "spare": {
-    "mandatory": 3140,
+    "mandatory": 3168,
     "bonus": 294
   },
   "bindingConstraint": "mandatory",
-  "maxDays": 934
+  "maxDays": 942
 }

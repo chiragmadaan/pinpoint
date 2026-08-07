@@ -499,5 +499,459 @@
     ],
     "fact": "Only two countries are doubly landlocked — Uzbekistan and Liechtenstein. Reaching the sea from either means crossing at least two borders.",
     "source": "curated:only-country"
+  },
+  {
+    "id": "trivia-unsc-p5",
+    "clueType": "trivia",
+    "difficulty": "easy",
+    "prompt": "Which is one of the five permanent members of the UN Security Council?",
+    "answerIso": "FRA",
+    "acceptedIso": [
+      "RUS",
+      "CHN",
+      "USA",
+      "GBR",
+      "FRA"
+    ],
+    "timeSensitive": true,
+    "asOf": "2026-08-07",
+    "fact": "The five permanent members — Russia, China, the United States, the United Kingdom and France — each hold a veto. (As of 2026.)",
+    "source": "curated:multi-answer",
+    "family": "unsc"
+  },
+  {
+    "id": "trivia-nordic",
+    "clueType": "trivia",
+    "difficulty": "easy",
+    "prompt": "Which is one of the five Nordic countries?",
+    "answerIso": "ISL",
+    "acceptedIso": [
+      "DNK",
+      "FIN",
+      "ISL",
+      "NOR",
+      "SWE"
+    ],
+    "fact": "The Nordic countries are Denmark, Finland, Iceland, Norway and Sweden.",
+    "source": "curated:multi-answer",
+    "family": "nordic"
+  },
+  {
+    "id": "trivia-g7",
+    "clueType": "trivia",
+    "difficulty": "easy",
+    "prompt": "Which is one of the seven G7 countries?",
+    "answerIso": "ITA",
+    "acceptedIso": [
+      "CAN",
+      "FRA",
+      "DEU",
+      "ITA",
+      "JPN",
+      "GBR",
+      "USA"
+    ],
+    "timeSensitive": true,
+    "asOf": "2026-08-07",
+    "fact": "The G7 is Canada, France, Germany, Italy, Japan, the United Kingdom and the United States. (As of 2026.)",
+    "source": "curated:multi-answer",
+    "family": "g7"
+  },
+  {
+    "id": "trivia-benelux",
+    "clueType": "trivia",
+    "difficulty": "easy",
+    "prompt": "Which is one of the three Benelux countries?",
+    "answerIso": "NLD",
+    "acceptedIso": [
+      "BEL",
+      "NLD",
+      "LUX"
+    ],
+    "fact": "Benelux is a portmanteau of its three members — Belgium, the Netherlands and Luxembourg — whose 1944 customs union became the model for the European Union.",
+    "source": "curated:multi-answer",
+    "family": "benelux"
+  },
+  {
+    "id": "river-danube-countries",
+    "clueType": "trivia",
+    "difficulty": "easy",
+    "prompt": "Which is one of the ten countries the Danube flows through?",
+    "answerIso": "HUN",
+    "acceptedIso": [
+      "DEU",
+      "AUT",
+      "SVK",
+      "HUN",
+      "HRV",
+      "SRB",
+      "ROU",
+      "BGR",
+      "MDA",
+      "UKR"
+    ],
+    "fact": "The Danube passes through or borders ten countries — more than any other river on Earth — from Germany's Black Forest to the Black Sea.",
+    "source": "curated:multi-answer",
+    "family": "danube"
+  },
+  {
+    "id": "trivia-black-sea",
+    "clueType": "trivia",
+    "difficulty": "easy",
+    "prompt": "Which is one of the six countries that border the Black Sea?",
+    "answerIso": "GEO",
+    "acceptedIso": [
+      "BGR",
+      "GEO",
+      "ROU",
+      "RUS",
+      "TUR",
+      "UKR"
+    ],
+    "fact": "The Black Sea is bordered by Bulgaria, Georgia, Romania, Russia, Turkey and Ukraine, and drains a basin covering almost a third of Europe.",
+    "source": "curated:multi-answer",
+    "family": "black-sea"
+  },
+  {
+    "id": "trivia-baltic-states",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which is one of the three Baltic states?",
+    "answerIso": "LVA",
+    "acceptedIso": [
+      "EST",
+      "LVA",
+      "LTU"
+    ],
+    "fact": "The Baltic states are Estonia, Latvia and Lithuania. Estonian is a Finnic language, unrelated to Latvian and Lithuanian.",
+    "source": "curated:multi-answer",
+    "family": "baltic"
+  },
+  {
+    "id": "trivia-opec",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which is one of the eleven OPEC member countries?",
+    "answerIso": "GAB",
+    "acceptedIso": [
+      "DZA",
+      "COG",
+      "GNQ",
+      "GAB",
+      "IRN",
+      "IRQ",
+      "KWT",
+      "LBY",
+      "NGA",
+      "SAU",
+      "VEN"
+    ],
+    "timeSensitive": true,
+    "asOf": "2026-08-07",
+    "fact": "OPEC has eleven members — six in Africa, four in the Middle East and one, Venezuela, in South America. Angola announced its departure in December 2023. (As of 2026.)",
+    "source": "curated:multi-answer",
+    "family": "opec"
+  },
+  {
+    "id": "trivia-caspian",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which is one of the five countries that border the Caspian Sea?",
+    "answerIso": "TKM",
+    "acceptedIso": [
+      "AZE",
+      "IRN",
+      "KAZ",
+      "RUS",
+      "TKM"
+    ],
+    "fact": "The Caspian is the largest inland body of water on Earth; its coastlines are shared by Azerbaijan, Iran, Kazakhstan, Russia and Turkmenistan.",
+    "source": "curated:multi-answer",
+    "family": "caspian"
+  },
+  {
+    "id": "trivia-borneo",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which is one of the three countries with territory on the island of Borneo?",
+    "answerIso": "BRN",
+    "acceptedIso": [
+      "IDN",
+      "MYS",
+      "BRN"
+    ],
+    "fact": "Borneo is split three ways: Indonesia holds about 73%, Malaysia 26%, and Brunei the remaining 1%.",
+    "source": "curated:multi-answer",
+    "family": "borneo"
+  },
+  {
+    "id": "trivia-hispaniola",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "prompt": "Which is one of the two countries on the island of Hispaniola?",
+    "answerIso": "HTI",
+    "acceptedIso": [
+      "HTI",
+      "DOM"
+    ],
+    "fact": "Hispaniola is divided between Spanish-speaking Dominican Republic to the east and French- and Creole-speaking Haiti to the west.",
+    "source": "curated:multi-answer",
+    "family": "hispaniola"
+  },
+  {
+    "id": "trivia-visegrad",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "prompt": "Which is one of the four countries in the Visegrád Group?",
+    "answerIso": "SVK",
+    "acceptedIso": [
+      "CZE",
+      "HUN",
+      "POL",
+      "SVK"
+    ],
+    "fact": "The Visegrád Group — Czechia, Hungary, Poland and Slovakia — is named after the Hungarian castle town where its leaders first met in 1991.",
+    "source": "curated:multi-answer",
+    "family": "visegrad"
+  },
+  {
+    "id": "trivia-opec-africa",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "family": "opec",
+    "timeSensitive": true,
+    "asOf": "2026-08-07",
+    "prompt": "Which is one of the six African members of OPEC?",
+    "answerIso": "COG",
+    "acceptedIso": [
+      "DZA",
+      "COG",
+      "GNQ",
+      "GAB",
+      "LBY",
+      "NGA"
+    ],
+    "fact": "Africa supplies six of OPEC's eleven members: Algeria, the Republic of the Congo, Equatorial Guinea, Gabon, Libya and Nigeria. (As of 2026.)",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-opec-mideast",
+    "clueType": "trivia",
+    "difficulty": "easy",
+    "family": "opec",
+    "timeSensitive": true,
+    "asOf": "2026-08-07",
+    "prompt": "Which is one of the four Middle Eastern members of OPEC?",
+    "answerIso": "KWT",
+    "acceptedIso": [
+      "IRN",
+      "IRQ",
+      "KWT",
+      "SAU"
+    ],
+    "fact": "OPEC's four Middle Eastern members — Iran, Iraq, Kuwait and Saudi Arabia — sit on the bulk of the cartel's proven reserves. (As of 2026.)",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-opec-south-america",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "family": "opec",
+    "timeSensitive": true,
+    "asOf": "2026-08-07",
+    "prompt": "Which is the only South American member of OPEC?",
+    "answerIso": "VEN",
+    "acceptedIso": [
+      "VEN"
+    ],
+    "fact": "Venezuela is OPEC's sole South American member and one of its five founders — it called the 1949 meeting that set the cartel in motion.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-opec-founders",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "family": "opec",
+    "prompt": "Which is one of the five countries that founded OPEC in 1960?",
+    "answerIso": "IRQ",
+    "acceptedIso": [
+      "IRN",
+      "IRQ",
+      "KWT",
+      "SAU",
+      "VEN"
+    ],
+    "fact": "OPEC was founded on 14 September 1960 in Baghdad by Iran, Iraq, Kuwait, Saudi Arabia and Venezuela. Admitting a new member still needs the consent of all five.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-opec-former",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "family": "opec",
+    "timeSensitive": true,
+    "asOf": "2026-08-07",
+    "prompt": "Which is one of the five countries that have left OPEC?",
+    "answerIso": "ECU",
+    "acceptedIso": [
+      "AGO",
+      "ECU",
+      "IDN",
+      "QAT",
+      "ARE"
+    ],
+    "fact": "Five countries have left OPEC: Angola, Ecuador, Indonesia, Qatar and the United Arab Emirates. (As of 2026.)",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-g7-asia",
+    "clueType": "trivia",
+    "difficulty": "easy",
+    "family": "g7",
+    "prompt": "Which is the only G7 country in Asia?",
+    "answerIso": "JPN",
+    "acceptedIso": [
+      "JPN"
+    ],
+    "fact": "Japan is the only Asian member of the G7, which it joined at the group's second summit in 1976.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-g7-europe",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "family": "g7",
+    "prompt": "Which is one of the four European members of the G7?",
+    "answerIso": "DEU",
+    "acceptedIso": [
+      "FRA",
+      "DEU",
+      "ITA",
+      "GBR"
+    ],
+    "fact": "Four of the seven are European — France, Germany, Italy and the United Kingdom — alongside Canada, Japan and the United States.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-scandinavia",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "family": "nordic",
+    "prompt": "Which is one of the three Scandinavian countries?",
+    "answerIso": "NOR",
+    "acceptedIso": [
+      "DNK",
+      "NOR",
+      "SWE"
+    ],
+    "fact": "Scandinavia most commonly means Denmark, Norway and Sweden. Iceland and Finland are Nordic but not Scandinavian.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-benelux-duchy",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "family": "benelux",
+    "prompt": "Which is the only Benelux country that is a grand duchy?",
+    "answerIso": "LUX",
+    "acceptedIso": [
+      "LUX"
+    ],
+    "fact": "Luxembourg is officially the Grand Duchy of Luxembourg — the world's only remaining sovereign grand duchy.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "river-danube-capitals",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "family": "danube",
+    "prompt": "Which is one of the four countries whose capital city stands on the Danube?",
+    "answerIso": "SRB",
+    "acceptedIso": [
+      "AUT",
+      "SVK",
+      "HUN",
+      "SRB"
+    ],
+    "fact": "The Danube passes four national capitals — Vienna, Bratislava, Budapest and Belgrade — more than any other river.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-two-seas",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "family": "black-sea",
+    "prompt": "Which is the only country that borders both the Black Sea and the Caspian Sea?",
+    "answerIso": "RUS",
+    "acceptedIso": [
+      "RUS"
+    ],
+    "fact": "Russia alone touches both: the Black Sea coast around Sochi, and the Caspian shore at the mouth of the Volga.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-caspian-non-soviet",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "family": "caspian",
+    "prompt": "Which is the only country on the Caspian Sea that was never part of the Soviet Union?",
+    "answerIso": "IRN",
+    "acceptedIso": [
+      "IRN"
+    ],
+    "fact": "Iran holds the Caspian's southern shore; the other four coasts — Azerbaijan, Kazakhstan, Russia and Turkmenistan — were all Soviet republics.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-borneo-only",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "family": "borneo",
+    "prompt": "Which is the only sovereign country lying entirely on the island of Borneo?",
+    "answerIso": "BRN",
+    "acceptedIso": [
+      "BRN"
+    ],
+    "fact": "Brunei occupies about 1% of Borneo and lies wholly on it; Indonesia and Malaysia, which hold the other 99%, both extend well beyond the island.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-hispaniola-west",
+    "clueType": "trivia",
+    "difficulty": "medium",
+    "family": "hispaniola",
+    "prompt": "Which country occupies the western part of the island of Hispaniola?",
+    "answerIso": "HTI",
+    "acceptedIso": [
+      "HTI"
+    ],
+    "fact": "Haiti holds the western third of Hispaniola and speaks French and Haitian Creole; the Spanish-speaking Dominican Republic has the larger eastern portion.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-visegrad-coast",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "family": "visegrad",
+    "prompt": "Which is the only Visegrád Group country with a sea coast?",
+    "answerIso": "POL",
+    "acceptedIso": [
+      "POL"
+    ],
+    "fact": "Poland reaches the Baltic; the other three Visegrád countries — Czechia, Hungary and Slovakia — are all landlocked.",
+    "source": "curated:multi-answer"
+  },
+  {
+    "id": "trivia-baltic-finnic",
+    "clueType": "trivia",
+    "difficulty": "hard",
+    "family": "baltic",
+    "prompt": "Which Baltic state speaks a Finnic language rather than a Baltic one?",
+    "answerIso": "EST",
+    "acceptedIso": [
+      "EST"
+    ],
+    "fact": "Estonian is a Finnic language, close to Finnish. Latvian and Lithuanian are Baltic languages, and neither is intelligible to an Estonian speaker.",
+    "source": "curated:multi-answer"
   }
 ]
